@@ -1,0 +1,27 @@
+# Виртуальные окружения (системный мусор Питона)
+venv/
+env/
+lib/
+lib64/
+share/
+bin/
+include/
+pyvenv.cfg
+
+# Кэш Питона
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Секретные ключи и логи (ЭТО ПРЯЧЕМ)
+.env
+bot.log
+*.log
+
+# Локальные базы данных (чтобы бот жюри начал с чистого листа)
+data/trend_state.json
+data/pending_alerts.json
+
+# Системные файлы Ubuntu/Mac
+.DS_Store
+Thumbs.db

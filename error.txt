@@ -1,0 +1,159 @@
+╭─────────────────────────────── Traceback (most recent call last) ────────────────────────────────╮
+│ in <module>:1                                                                                    │
+│                                                                                                  │
+│ /root/AiAlisa-copilot/venv/lib/python3.11/site-packages/openclaw/__init__.py:10 in <module>      │
+│                                                                                                  │
+│    7                                                                                             │
+│    8 from __future__ import annotations                                                          │
+│    9                                                                                             │
+│ ❱ 10 from cmdop import CMDOPClient, AsyncCMDOPClient                                             │
+│   11 from cmdop.exceptions import (                                                              │
+│   12 │   CMDOPError,                                                                             │
+│   13 │   ConnectionError,                                                                        │
+│                                                                                                  │
+│ ╭─────────────────────────── locals ───────────────────────────╮                                 │
+│ │ annotations = _Feature((3, 7, 0, 'beta', 1), None, 16777216) │                                 │
+│ ╰──────────────────────────────────────────────────────────────╯                                 │
+│                                                                                                  │
+│ /root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/__init__.py:112 in <module>        │
+│                                                                                                  │
+│   109 │   StreamState,                                                                           │
+│   110 │   TerminalStream,                                                                        │
+│   111 )                                                                                          │
+│ ❱ 112 from cmdop.discovery import (                                                              │
+│   113 │   AgentDiscovery,                                                                        │
+│   114 │   AgentStatus,                                                                           │
+│   115 │   RemoteAgentInfo,                                                                       │
+│                                                                                                  │
+│ ╭─────────────────────────────────────────── locals ───────────────────────────────────────────╮ │
+│ │         client = <module 'cmdop.client' from                                                 │ │
+│ │                  '/root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/client.py'>  │ │
+│ │         config = <module 'cmdop.config' from                                                 │ │
+│ │                  '/root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/config.py'>  │ │
+│ │     exceptions = <module 'cmdop.exceptions' from                                             │ │
+│ │                  '/root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/exceptions.… │ │
+│ │        logging = <module 'cmdop.logging' from                                                │ │
+│ │                  '/root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/logging.py'> │ │
+│ │         models = <module 'cmdop.models' from                                                 │ │
+│ │                  '/root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/models/__in… │ │
+│ │       services = <module 'cmdop.services' from                                               │ │
+│ │                  '/root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/services/__… │ │
+│ │ StreamCallback = typing.Callable[[cmdop.streaming.base.StreamEvent, typing.Any],             │ │
+│ │                  typing.Coroutine[typing.Any, typing.Any, NoneType]]                         │ │
+│ │      streaming = <module 'cmdop.streaming' from                                              │ │
+│ │                  '/root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/streaming/_… │ │
+│ │      transport = <module 'cmdop.transport' from                                              │ │
+│ │                  '/root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/transport/_… │ │
+│ ╰──────────────────────────────────────────────────────────────────────────────────────────────╯ │
+│                                                                                                  │
+│ /root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/discovery.py:17 in <module>        │
+│                                                                                                  │
+│    14 from enum import Enum                                                                      │
+│    15 from typing import Any                                                                     │
+│    16                                                                                            │
+│ ❱  17 from cmdop.api.client import CMDOPAPI                                                      │
+│    18 from cmdop.config import get_settings                                                      │
+│    19                                                                                            │
+│    20                                                                                            │
+│                                                                                                  │
+│ ╭──────────────────────────────────── locals ─────────────────────────────────────╮              │
+│ │ annotations = _Feature((3, 7, 0, 'beta', 1), None, 16777216)                    │              │
+│ │     asyncio = <module 'asyncio' from '/usr/lib/python3.11/asyncio/__init__.py'> │              │
+│ │  contextlib = <module 'contextlib' from '/usr/lib/python3.11/contextlib.py'>    │              │
+│ ╰─────────────────────────────────────────────────────────────────────────────────╯              │
+│                                                                                                  │
+│ /root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/api/__init__.py:33 in <module>     │
+│                                                                                                  │
+│   30 )                                                                                           │
+│   31                                                                                             │
+│   32 # Re-export generated clients for direct access                                             │
+│ ❱ 33 from cmdop.api.generated import machines, workspaces, system                                │
+│   34                                                                                             │
+│   35 __all__ = [                                                                                 │
+│   36 │   # Main client                                                                           │
+│                                                                                                  │
+│ ╭─────────────────────────────────────────── locals ───────────────────────────────────────────╮ │
+│ │ annotations = _Feature((3, 7, 0, 'beta', 1), None, 16777216)                                 │ │
+│ │   BASE_URLS = {                                                                              │ │
+│ │               │   'prod': 'https://api.cmdop.com',                                           │ │
+│ │               │   'dev': 'https://dev.cmdop.com',                                            │ │
+│ │               │   'local': 'http://localhost:8000'                                           │ │
+│ │               }                                                                              │ │
+│ │      client = <module 'cmdop.api.client' from                                                │ │
+│ │               '/root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/api/client.py'> │ │
+│ │      config = <module 'cmdop.api.config' from                                                │ │
+│ │               '/root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/api/config.py'> │ │
+│ │   generated = <module 'cmdop.api.generated' (<_frozen_importlib_external.NamespaceLoader     │ │
+│ │               object at 0x7d790d7d7650>)>                                                    │ │
+│ │    services = <module 'cmdop.api.services' from                                              │ │
+│ │               '/root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/api/services/_… │ │
+│ ╰──────────────────────────────────────────────────────────────────────────────────────────────╯ │
+│                                                                                                  │
+│ /root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/api/generated/machines/__init__.py │
+│ :32 in <module>                                                                                  │
+│                                                                                                  │
+│    29 import threading                                                                           │
+│    30 from typing import Any                                                                     │
+│    31                                                                                            │
+│ ❱  32 from .client import APIClient                                                              │
+│    33 from .enums import (                                                                       │
+│    34 │   MachineLogLevel,                                                                       │
+│    35 │   MachineOs,                                                                             │
+│                                                                                                  │
+│ ╭────────────────────────────────── locals ──────────────────────────────────╮                   │
+│ │ annotations = _Feature((3, 7, 0, 'beta', 1), None, 16777216)               │                   │
+│ │   threading = <module 'threading' from '/usr/lib/python3.11/threading.py'> │                   │
+│ ╰────────────────────────────────────────────────────────────────────────────╯                   │
+│                                                                                                  │
+│ /root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/api/generated/machines/client.py:7 │
+│ in <module>                                                                                      │
+│                                                                                                  │
+│    4                                                                                             │
+│    5 import httpx                                                                                │
+│    6                                                                                             │
+│ ❱  7 from .helpers import APILogger, LoggerConfig, RetryAsyncClient, RetryConfig                 │
+│    8 from .machines__api__machine_sharing import MachinesMachineSharingAPI                       │
+│    9 from .machines__api__machines import MachinesMachinesAPI                                    │
+│   10                                                                                             │
+│                                                                                                  │
+│ ╭─────────────────────────────────────────── locals ───────────────────────────────────────────╮ │
+│ │ annotations = _Feature((3, 7, 0, 'beta', 1), None, 16777216)                                 │ │
+│ │       httpx = <module 'httpx' from                                                           │ │
+│ │               '/root/AiAlisa-copilot/venv/lib/python3.11/site-packages/httpx/__init__.py'>   │ │
+│ ╰──────────────────────────────────────────────────────────────────────────────────────────────╯ │
+│                                                                                                  │
+│ /root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/api/generated/machines/helpers/__i │
+│ nit__.py:4 in <module>                                                                           │
+│                                                                                                  │
+│    1 # Auto-generated by DjangoCFG - see CLAUDE.md                                               │
+│    2                                                                                             │
+│    3 from .logger import APILogger, LoggerConfig                                                 │
+│ ❱  4 from .retry import RetryAsyncClient, RetryConfig                                            │
+│    5                                                                                             │
+│    6 __all__ = [                                                                                 │
+│    7 │   "APILogger",                                                                            │
+│                                                                                                  │
+│ ╭─────────────────────────────────────────── locals ───────────────────────────────────────────╮ │
+│ │ logger = <module 'cmdop.api.generated.machines.helpers.logger' from                          │ │
+│ │          '/root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/api/generated/machi… │ │
+│ ╰──────────────────────────────────────────────────────────────────────────────────────────────╯ │
+│                                                                                                  │
+│ /root/AiAlisa-copilot/venv/lib/python3.11/site-packages/cmdop/api/generated/machines/helpers/ret │
+│ ry.py:18 in <module>                                                                             │
+│                                                                                                  │
+│    15 from typing import Any                                                                     │
+│    16                                                                                            │
+│    17 import httpx                                                                               │
+│ ❱  18 from tenacity import (                                                                     │
+│    19 │   RetryCallState,                                                                        │
+│    20 │   before_sleep_log,                                                                      │
+│    21 │   retry,                                                                                 │
+│                                                                                                  │
+│ ╭─────────────────────────────────────────── locals ───────────────────────────────────────────╮ │
+│ │ annotations = _Feature((3, 7, 0, 'beta', 1), None, 16777216)                                 │ │
+│ │       httpx = <module 'httpx' from                                                           │ │
+│ │               '/root/AiAlisa-copilot/venv/lib/python3.11/site-packages/httpx/__init__.py'>   │ │
+│ │     logging = <module 'logging' from '/usr/lib/python3.11/logging/__init__.py'>              │ │
+│ ╰──────────────────────────────────────────────────────────────────────────────────────────────╯ │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+ModuleNotFoundError: No module named 'tenacity'
