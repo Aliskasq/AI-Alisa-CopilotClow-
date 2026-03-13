@@ -25,3 +25,9 @@ data/pending_alerts.json
 # Системные файлы Ubuntu/Mac
 .DS_Store
 Thumbs.db
+
+# Мусор редакторов и логи
+*.save
+*.png
+error.txt
+pending_alerts.json
