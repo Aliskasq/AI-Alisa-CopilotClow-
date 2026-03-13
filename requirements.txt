@@ -1,3 +1,4 @@
+tenacity
 cryptography
 aiohttp
 pandas
