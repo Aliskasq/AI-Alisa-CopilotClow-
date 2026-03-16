@@ -23,6 +23,7 @@ data/trend_state.json
 data/pending_alerts.json
 data/breakout_log.json
 data/square_cache.json
+data/price_alerts.json
 
 # Системные файлы Ubuntu/Mac
 .DS_Store

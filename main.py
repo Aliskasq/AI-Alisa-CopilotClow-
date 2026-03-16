@@ -14,7 +14,7 @@ from core.chart_drawer import send_breakout_notification
 import aiohttp
 
 # --- AI AND INDICATOR IMPORTS ---
-from core.tg_listener import telegram_polling_loop, auto_trend_sender
+from core.tg_listener import telegram_polling_loop, auto_trend_sender, price_alert_monitor
 from core.indicators import calculate_binance_indicators
 from agent.analyzer import ask_ai_analysis
 from agent.square_publisher import auto_square_poster
@@ -71,6 +71,9 @@ async def main():
         
         # Start daily trend summary sender (23:57 UTC)
         asyncio.create_task(auto_trend_sender(session))
+        
+        # Start price alert monitor (checks every 30s)
+        asyncio.create_task(price_alert_monitor(session))
 
 
         while True:

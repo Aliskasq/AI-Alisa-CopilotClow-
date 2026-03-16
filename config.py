@@ -36,6 +36,7 @@ else:
 TREND_STATE_FILE = "data/trend_state.json"
 ALERTS_FILE = "data/pending_alerts.json"
 BREAKOUT_LOG_FILE = "data/breakout_log.json"
+PRICE_ALERTS_FILE = "data/price_alerts.json"
 
 def load_alerts():
     if os.path.exists(ALERTS_FILE):
@@ -87,3 +88,21 @@ def add_breakout_entry(symbol, tf, breakout_price, current_price, line_type=""):
 
 def clear_breakout_log():
     save_breakout_log([])
+
+# --- PRICE ALERTS ---
+def load_price_alerts():
+    if os.path.exists(PRICE_ALERTS_FILE):
+        try:
+            with open(PRICE_ALERTS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+def save_price_alerts(alerts):
+    try:
+        os.makedirs(os.path.dirname(PRICE_ALERTS_FILE), exist_ok=True)
+        with open(PRICE_ALERTS_FILE, "w") as f:
+            json.dump(alerts, f, indent=2)
+    except Exception as e:
+        logging.error(f"Error writing price alerts: {e}")

@@ -6,7 +6,7 @@ import os
 import pandas as pd
 import json
 from datetime import datetime, timezone, timedelta
-from config import BOT_TOKEN, GROUP_CHAT_ID, CHAT_ID, load_breakout_log
+from config import BOT_TOKEN, GROUP_CHAT_ID, CHAT_ID, load_breakout_log, load_price_alerts, save_price_alerts
 
 from core.binance_api import fetch_klines, fetch_funding_rate
 from core.indicators import calculate_binance_indicators
@@ -124,6 +124,86 @@ async def auto_trend_sender(session: aiohttp.ClientSession):
         except Exception as e:
             logging.error(f"❌ Auto trend sender error: {e}")
             await asyncio.sleep(60)
+
+
+async def price_alert_monitor(session: aiohttp.ClientSession):
+    """Background task: checks price alerts every 30 seconds and notifies users."""
+    logging.info("🔔 Price alert monitor started.")
+    while True:
+        try:
+            alerts = load_price_alerts()
+            if not alerts:
+                await asyncio.sleep(30)
+                continue
+
+            # Get all unique symbols
+            symbols = list(set(a["symbol"] for a in alerts))
+            prices = {}
+
+            # Fetch current prices (batch via futures ticker)
+            try:
+                async with session.get("https://fapi.binance.com/fapi/v1/ticker/price", timeout=10) as resp:
+                    if resp.status == 200:
+                        tickers = await resp.json()
+                        for t in tickers:
+                            prices[t["symbol"]] = float(t["price"])
+            except Exception:
+                await asyncio.sleep(30)
+                continue
+
+            triggered = []
+            remaining = []
+
+            for alert in alerts:
+                sym = alert["symbol"]
+                target = alert["target_price"]
+                direction = alert["direction"]  # "above" or "below"
+                current = prices.get(sym)
+
+                if current is None:
+                    remaining.append(alert)
+                    continue
+
+                hit = False
+                if direction == "above" and current >= target:
+                    hit = True
+                elif direction == "below" and current <= target:
+                    hit = True
+
+                if hit:
+                    triggered.append((alert, current))
+                else:
+                    remaining.append(alert)
+
+            # Send notifications for triggered alerts
+            for alert, current in triggered:
+                short_sym = alert["symbol"].replace("USDT", "")
+                arrow = "🟢📈" if alert["direction"] == "above" else "🔴📉"
+                notify_text = (
+                    f"{arrow} *PRICE ALERT!*\n\n"
+                    f"💰 `${short_sym}` reached `${current:.6f}`\n"
+                    f"🎯 Your target: `${alert['target_price']:.6f}`"
+                )
+                try:
+                    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+                    payload = {
+                        "chat_id": alert["chat_id"],
+                        "text": notify_text,
+                        "parse_mode": "Markdown"
+                    }
+                    await session.post(url, json=payload)
+                except Exception as e:
+                    logging.error(f"❌ Alert notification error: {e}")
+
+            # Save remaining alerts
+            if len(triggered) > 0:
+                save_price_alerts(remaining)
+                logging.info(f"🔔 {len(triggered)} price alert(s) triggered, {len(remaining)} remaining.")
+
+            await asyncio.sleep(30)
+        except Exception as e:
+            logging.error(f"❌ Price alert monitor error: {e}")
+            await asyncio.sleep(30)
 
 
 async def send_response(session, chat_id, text, reply_to_msg_id=None, reply_markup=None, parse_mode=None):
@@ -343,7 +423,8 @@ async def telegram_polling_loop(app_session):
                                 "🛠 `/skills` - Open Web3 Skills Menu\n"
                                 "📈 `/top gainers` - Top 10 Futures growth 24h\n"
                                 "📉 `/top losers` - Top 10 Futures drops 24h\n"
-                                "📊 `/trend` - All breakout coins since last scan"
+                                "📊 `/trend` - All breakout coins since last scan\n"
+                                "🔔 `/alert BTC 69500` - Price alert notification"
                             )
                             if is_admin(msg):
                                 welcome_text += (
@@ -519,6 +600,92 @@ async def telegram_polling_loop(app_session):
                                     "`/top gainers` — Top 10 growth (24h)\n"
                                     "`/top losers` — Top 10 drops (24h)",
                                     msg_id, parse_mode="Markdown")
+                            continue
+
+                        # ==========================================
+                        # PRICE ALERTS (/alert) — PUBLIC
+                        # ==========================================
+                        if text.startswith("/alert"):
+                            parts = original_text.split()
+                            # /alert list — show active alerts
+                            if len(parts) == 2 and parts[1].lower() in ("list", "список"):
+                                alerts = load_price_alerts()
+                                user_alerts = [a for a in alerts if a["chat_id"] == chat_id]
+                                if not user_alerts:
+                                    await send_response(app_session, chat_id, "📭 У вас нет активных алертов.\n\nИспользуйте:\n`/alert BTC 69500`", msg_id, parse_mode="Markdown")
+                                else:
+                                    lines = ["🔔 *Ваши алерты:*\n"]
+                                    for i, a in enumerate(user_alerts, 1):
+                                        short = a["symbol"].replace("USDT", "")
+                                        arrow = "↗️" if a["direction"] == "above" else "↘️"
+                                        lines.append(f"{i}. {arrow} `${short}` → `${a['target_price']:.6f}`")
+                                    await send_response(app_session, chat_id, "\n".join(lines), msg_id, parse_mode="Markdown")
+                                continue
+
+                            # /alert clear — remove all user alerts
+                            if len(parts) == 2 and parts[1].lower() in ("clear", "очистить"):
+                                alerts = load_price_alerts()
+                                remaining = [a for a in alerts if a["chat_id"] != chat_id]
+                                save_price_alerts(remaining)
+                                await send_response(app_session, chat_id, "✅ Все ваши алерты удалены.", msg_id)
+                                continue
+
+                            # /alert BTC 69500 — set new alert
+                            if len(parts) >= 3:
+                                coin_raw = parts[1].upper().strip()
+                                symbol = coin_raw + "USDT" if not coin_raw.endswith("USDT") else coin_raw
+                                try:
+                                    target_price = float(parts[2].replace(",", "."))
+                                except ValueError:
+                                    await send_response(app_session, chat_id, "⚠️ Неверная цена. Пример: `/alert BTC 69500`", msg_id, parse_mode="Markdown")
+                                    continue
+
+                                # Get current price to determine direction
+                                current_price = 0
+                                try:
+                                    async with app_session.get(f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={symbol}", timeout=5) as resp:
+                                        if resp.status == 200:
+                                            data = await resp.json()
+                                            current_price = float(data["price"])
+                                except Exception:
+                                    pass
+
+                                if current_price == 0:
+                                    await send_response(app_session, chat_id, f"⚠️ Не найдена пара `{symbol}` на Binance Futures.", msg_id, parse_mode="Markdown")
+                                    continue
+
+                                direction = "above" if target_price > current_price else "below"
+                                arrow = "📈" if direction == "above" else "📉"
+
+                                alerts = load_price_alerts()
+                                alerts.append({
+                                    "symbol": symbol,
+                                    "target_price": target_price,
+                                    "direction": direction,
+                                    "chat_id": chat_id,
+                                    "user_id": msg.get("from", {}).get("id", 0),
+                                    "set_price": current_price,
+                                    "time": datetime.now(timezone.utc).isoformat()
+                                })
+                                save_price_alerts(alerts)
+
+                                short = symbol.replace("USDT", "")
+                                await send_response(app_session, chat_id,
+                                    f"✅ Алерт установлен!\n\n"
+                                    f"🪙 `${short}`\n"
+                                    f"💰 Сейчас: `${current_price:.6f}`\n"
+                                    f"{arrow} Цель: `${target_price:.6f}`\n"
+                                    f"📩 Уведомлю когда цена {'поднимется' if direction == 'above' else 'опустится'} до цели.",
+                                    msg_id, parse_mode="Markdown")
+                                continue
+
+                            # No args — show help
+                            await send_response(app_session, chat_id,
+                                "🔔 *Price Alert:*\n\n"
+                                "Установить: `/alert BTC 69500`\n"
+                                "Список: `/alert list`\n"
+                                "Удалить все: `/alert clear`",
+                                msg_id, parse_mode="Markdown")
                             continue
 
                         # ==========================================

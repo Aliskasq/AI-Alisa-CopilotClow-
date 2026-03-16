@@ -101,6 +101,9 @@ Alisa provides a comprehensive control panel via Telegram:
 *   `/top gainers` - Top 10 Futures growth (24h).
 *   `/top losers` - Top 10 Futures drops (24h).
 *   `/trend` - Lists all coins that broke through trendlines since the last global scan (with breakout price & current price).
+*   `/alert [coin] [price]` - Set a price alert (e.g., `/alert BTC 69500`). Get notified when the target price is reached.
+*   `/alert list` - View your active alerts.
+*   `/alert clear` - Remove all your alerts.
 
 **🔐 Admin Commands (bot owner only):**
 *   `/model` - Interactive AI engine selector (inline buttons: Free / GPT / Gemini models via OpenRouter).
