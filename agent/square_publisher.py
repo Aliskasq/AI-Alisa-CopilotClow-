@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import json
+import os
 import pandas as pd
 from datetime import datetime, timezone, timedelta
 import aiohttp
@@ -13,30 +15,99 @@ from agent.skills import post_to_binance_square
 # --- GLOBAL TOGGLE FOR TELEGRAM ---
 AUTO_SQUARE_ENABLED = True
 
+# --- SETTINGS FILE (persists across restarts) ---
+AUTOPOST_SETTINGS_FILE = "data/autopost_settings.json"
+
+def _load_settings():
+    """Load saved autopost settings (coins + times) from disk."""
+    defaults = {
+        "coins": ["BTCUSDT", "ETHUSDT", "BNBUSDT"],
+        "times": [{"hour": 9, "minute": 9}, {"hour": 21, "minute": 9}]
+    }
+    if os.path.exists(AUTOPOST_SETTINGS_FILE):
+        try:
+            with open(AUTOPOST_SETTINGS_FILE, 'r') as f:
+                saved = json.load(f)
+                return {
+                    "coins": saved.get("coins", defaults["coins"]),
+                    "times": saved.get("times", defaults["times"])
+                }
+        except Exception:
+            pass
+    return defaults
+
+def _save_settings(settings):
+    """Persist autopost settings to disk."""
+    os.makedirs(os.path.dirname(AUTOPOST_SETTINGS_FILE), exist_ok=True)
+    with open(AUTOPOST_SETTINGS_FILE, 'w') as f:
+        json.dump(settings, f, indent=2)
+
+# Load on import so tg_listener can read them
+AUTOPOST_SETTINGS = _load_settings()
+
+def set_coins(coin_list: list):
+    """Update coins for auto-posting. Called from tg_listener."""
+    symbols = []
+    for c in coin_list:
+        c = c.upper().strip()
+        if not c.endswith("USDT"):
+            c += "USDT"
+        symbols.append(c)
+    AUTOPOST_SETTINGS["coins"] = symbols
+    _save_settings(AUTOPOST_SETTINGS)
+
+def set_times(time_list: list):
+    """Update schedule times for auto-posting. Called from tg_listener.
+    time_list: list of dicts like [{"hour": 13, "minute": 30}, ...]
+    """
+    AUTOPOST_SETTINGS["times"] = time_list
+    _save_settings(AUTOPOST_SETTINGS)
+
+def get_coins():
+    return AUTOPOST_SETTINGS["coins"]
+
+def get_times():
+    return AUTOPOST_SETTINGS["times"]
+
+def get_status_text():
+    """Human-readable status string for Telegram."""
+    coins_str = ", ".join(AUTOPOST_SETTINGS["coins"])
+    times_str = ", ".join(f"{t['hour']:02d}:{t['minute']:02d} UTC" for t in AUTOPOST_SETTINGS["times"])
+    state = "ON ✅" if AUTO_SQUARE_ENABLED else "OFF ⏸"
+    return (
+        f"📢 *Auto-Post Status:* {state}\n"
+        f"🪙 *Coins:* `{coins_str}`\n"
+        f"⏰ *Schedule:* `{times_str}`"
+    )
+
+
 async def auto_square_poster(session: aiohttp.ClientSession):
-    """Background task for twice-a-day Binance Square reports (09:09 and 21:09 UTC)"""
+    """Background task: publishes AI reports to Binance Square at configured times."""
     global AUTO_SQUARE_ENABLED
-    logging.info("🕒 Square Publisher task started. Scheduled for 09:09 and 21:09 UTC.")
-    coins_to_post = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+    logging.info("🕒 Square Publisher task started.")
 
     while True:
         now = datetime.now(timezone.utc)
+        times = get_times()
 
-        # Calculate next target time (either today 09:09, today 21:09, or tomorrow 09:09)
-        target_morning = now.replace(hour=9, minute=9, second=0, microsecond=0)
-        target_evening = now.replace(hour=21, minute=9, second=0, microsecond=0)
+        # Build list of candidate target datetimes (today + tomorrow morning fallback)
+        candidates = []
+        for t in times:
+            candidate = now.replace(hour=t["hour"], minute=t["minute"], second=0, microsecond=0)
+            candidates.append(candidate)
+            # Also add tomorrow's version in case all today's times have passed
+            candidates.append(candidate + timedelta(days=1))
 
-        if now < target_morning:
-            target_time = target_morning
-        elif now < target_evening:
-            target_time = target_evening
-        else:
-            # Skip to tomorrow morning
-            target_time = target_morning + timedelta(days=1)
+        # Pick the nearest future time
+        future_candidates = [c for c in candidates if c > now]
+        if not future_candidates:
+            # Shouldn't happen, but safeguard
+            await asyncio.sleep(60)
+            continue
 
+        target_time = min(future_candidates)
         sleep_sec = (target_time - now).total_seconds()
 
-        # Failsafe in case of microsecond rounding issues
         if sleep_sec <= 0:
             sleep_sec = 60
 
@@ -49,31 +120,28 @@ async def auto_square_poster(session: aiohttp.ClientSession):
             await asyncio.sleep(120)
             continue
 
-        # Woke up at target time (09:09 or 21:09) and posting IS enabled
+        # Woke up at target time — post for each configured coin
+        coins_to_post = get_coins()
         for symbol in coins_to_post:
             try:
                 logging.info(f"Generating Square post for {symbol}...")
 
-                # Request 1H timeframe for a good intraday snapshot
                 raw_df = await fetch_klines(session, symbol, "1h", 100)
-                if not raw_df: continue
+                if not raw_df:
+                    continue
 
                 df = pd.DataFrame(raw_df)
                 last_row, _ = calculate_binance_indicators(df, "1H")
 
-                # AI will automatically include $COIN and #AIBinance #BinanceSquare
                 ai_text = await ask_ai_analysis(symbol, "1H", last_row, lang="en")
-
-                # Adding a small introductory line
                 square_text = f"🤖 Bi-Daily Market Pulse:\n\n{ai_text}"
 
-                # Publish
                 res = await post_to_binance_square(square_text)
                 logging.info(f"✅ Square Auto-Post result for {symbol}: {res}")
 
-                await asyncio.sleep(15) # API Spam protection between posts
+                await asyncio.sleep(15)
             except Exception as e:
                 logging.error(f"❌ Auto post error for {symbol}: {e}")
 
-        # Sleep for 2 minutes to ensure we don't double-trigger in the same minute
+        # Prevent double-trigger
         await asyncio.sleep(120)

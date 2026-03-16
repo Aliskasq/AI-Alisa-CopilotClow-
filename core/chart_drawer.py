@@ -200,3 +200,121 @@ async def send_breakout_notification(symbol, df, line, tf, line_type, session, t
     except: pass
 
     return send_success
+
+
+async def draw_scan_chart(symbol: str, df: pd.DataFrame, line: dict, tf: str) -> str | None:
+    """
+    Draw a logarithmic chart with trend line for /scan commands.
+    Returns the file path to the PNG image, or None on failure.
+    Does NOT send to Telegram — caller handles that.
+    """
+    view_limit = min(len(df), 199)
+
+    plot_df = df.iloc[-view_limit:].copy().reset_index(drop=True)
+    plot_df['ds'] = pd.to_datetime(plot_df['open_time'], unit='ms')
+    plot_df.set_index('ds', inplace=True)
+
+    # --- Time sync (same logic as breakout notification) ---
+    tf_ms = 14400000 if tf == "4H" else 86400000
+    curr_last_time = int(plot_df['open_time'].iloc[-1])
+    base_open_time = line.get('base_open_time', curr_last_time)
+
+    shift = round((curr_last_time - base_open_time) / tf_ms)
+    if shift < 0:
+        shift = 0
+
+    base_idx = line.get('base_idx', view_limit - 1)
+    last_math_x = base_idx + shift
+    offset = last_math_x - (view_limit - 1)
+
+    # --- Build trend line values and peak markers ---
+    line_vals = []
+    all_peaks_series = [float('nan')] * view_limit
+    point_a_series = [float('nan')] * view_limit
+    point_b_series = [float('nan')] * view_limit
+
+    idx_a_view = -1
+    idx_b_view = -1
+    all_peaks_set = set(line.get('all_peaks', []))
+
+    min_chart_price = plot_df['low'].min() * 0.001
+    max_chart_price = plot_df['high'].max() * 1000.0
+
+    for i in range(view_limit):
+        math_x = i + offset
+        val_log = line['slope'] * math_x + line['intercept']
+        val = np.exp(val_log)
+        val_safe = max(min(val, max_chart_price), min_chart_price)
+        line_vals.append(val_safe)
+
+        if math_x in all_peaks_set:
+            all_peaks_series[i] = plot_df['high'].iloc[i]
+
+        if math_x == line.get('index_A'):
+            point_a_series[i] = line['price_A']
+            idx_a_view = i
+
+        if math_x == line.get('index_B'):
+            point_b_series[i] = line['price_B']
+            idx_b_view = i
+
+    addplots = []
+    if not all(np.isnan(x) for x in all_peaks_series):
+        addplots.append(mpf.make_addplot(all_peaks_series, type='scatter', markersize=50, marker='o', color='lime', alpha=0.8))
+    if idx_a_view != -1:
+        addplots.append(mpf.make_addplot(point_a_series, type='scatter', markersize=120, marker='o', color='blue'))
+    if idx_b_view != -1:
+        addplots.append(mpf.make_addplot(point_b_series, type='scatter', markersize=120, marker='o', color='red'))
+
+    # --- Trend line status label ---
+    current_price = float(plot_df['close'].iloc[-1])
+    line_price_now = np.exp(line['slope'] * last_math_x + line['intercept'])
+    diff_pct = ((current_price / line_price_now) - 1) * 100
+
+    if diff_pct >= 0:
+        price_label = f"Price is ABOVE trendline by {diff_pct:.2f}%"
+    else:
+        price_label = f"Price is {abs(diff_pct):.2f}% BELOW trendline"
+
+    line_type = line.get('type', 'SCAN')
+    file_path = f"scan_{symbol}_{tf}.png"
+    fig = None
+
+    try:
+        fig, axlist = mpf.plot(
+            plot_df, type='candle', style='charles',
+            alines=dict(alines=[list(zip(plot_df.index, line_vals))], colors='gold', linewidths=2),
+            addplot=addplots, yscale='log',
+            title=f"\n{symbol} {tf} | {line_type} (LOG-MODE)",
+            figsize=(14, 8), returnfig=True, tight_layout=True
+        )
+
+        ax = axlist[0]
+        ax.set_xlim(-0.5, view_limit - 0.5)
+
+        if idx_a_view != -1:
+            ax.text(idx_a_view, line['price_A'], f"{line['price_A']:.4f}", color='blue', fontsize=11, fontweight='bold', ha='center', va='bottom')
+        if idx_b_view != -1:
+            ax.text(idx_b_view, line['price_B'], f"{line['price_B']:.4f}", color='red', fontsize=11, fontweight='bold', ha='center', va='bottom')
+
+        # Watermark
+        ax.text(0.5, 0.02, 'Alisa_10000 / Alisa_Trend', transform=ax.transAxes, color='black', fontsize=28, fontweight='bold', ha='center', va='bottom', alpha=0.9)
+
+        # Price vs trendline info
+        ax.text(0.5, 0.97, price_label, transform=ax.transAxes, color='white', fontsize=12, fontweight='bold', ha='center', va='top',
+                bbox=dict(boxstyle='round,pad=0.3', facecolor='green' if diff_pct >= 0 else 'red', alpha=0.7))
+
+        fig.savefig(file_path, dpi=120, bbox_inches='tight')
+
+    except Exception as e:
+        logging.error(f"❌ Error generating scan chart {symbol}: {repr(e)}")
+        return None
+    finally:
+        if fig:
+            fig.clf()
+        plt.close('all')
+        gc.collect()
+
+    if os.path.exists(file_path):
+        return file_path
+    return None

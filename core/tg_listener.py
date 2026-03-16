@@ -11,7 +11,10 @@ from core.indicators import calculate_binance_indicators
 from agent.analyzer import ask_ai_analysis
 import agent.analyzer  
 import agent.square_publisher
+from agent.square_publisher import set_coins, set_times, get_coins, get_times, get_status_text
 from agent.skills import post_to_binance_square
+from core.geometry_scanner import find_trend_line
+from core.chart_drawer import draw_scan_chart
 SCAN_SCHEDULE = {"hour": 3, "minute": 0}
 
 # --- Import all skills ---
@@ -212,7 +215,13 @@ async def telegram_polling_loop(app_session):
                                 "🛠 `/skills` - Open Web3 Skills Menu\n"
                                 "🧠 `/models` - Change AI Engine\n"
                                 "⏰ `/time 18:30` - Set global scan schedule\n"
-                                "📢 `/autopost on` (or `off`) - Toggle Square Posts"
+                                "📢 `/autopost` - Status / manage auto-posts\n"
+                                "📢 `/autopost on / off` - Toggle auto-posts\n"
+                                "🪙 `/autopost SOL BTC ETH` - Set coins\n"
+                                "⏰ `/autopost time 13:30 22:50` - Set schedule\n"
+                                "✏️ `/post текст` - Post to Binance Square\n"
+                                "📈 `/top gainers` - Top 10 growth 24h\n"
+                                "📉 `/top losers` - Top 10 drops 24h"
                             )
                             await send_response(app_session, chat_id, welcome_text, msg_id, parse_mode="Markdown")
                             continue
@@ -236,19 +245,138 @@ async def telegram_polling_loop(app_session):
                             await send_response(app_session, chat_id, msg_text, msg_id, parse_mode="Markdown")
                             continue
 
-                        if text.startswith("/autopost"):
-                            state = text.split(" ")[-1].lower()
-                            if state == "on":
-                                agent.square_publisher.AUTO_SQUARE_ENABLED = True
-                                msg_text = "✅ Auto-posting to Binance Square is now **ENABLED**.\nReports will be generated at scheduled times."
-                            elif state == "off":
-                                agent.square_publisher.AUTO_SQUARE_ENABLED = False
-                                msg_text = "⏸ Auto-posting to Binance Square is now **DISABLED**.\nThe bot will skip scheduled posts."
+                        # ==========================================
+                        # CUSTOM POST TO BINANCE SQUARE (/post <text>)
+                        # ==========================================
+                        if text.startswith("/post"):
+                            parts = original_text.split(maxsplit=1)
+                            if len(parts) < 2 or not parts[1].strip():
+                                await send_response(app_session, chat_id,
+                                    "✏️ *Как использовать:*\n"
+                                    "`/post Ваш текст для Binance Square`\n\n"
+                                    "Пример:\n"
+                                    "`/post Привет Бинанс! Сегодня BTC выглядит бычьим 🚀`",
+                                    msg_id, parse_mode="Markdown")
                             else:
-                                current_state = "ON" if agent.square_publisher.AUTO_SQUARE_ENABLED else "OFF"
-                                msg_text = f"⚙️ Auto-post is currently **{current_state}**.\nTo change, use `/autopost on` or `/autopost off`."
-                            
+                                user_text = parts[1].strip()
+                                await send_response(app_session, chat_id, "⏳ Публикую в Binance Square...", msg_id)
+                                result = await post_to_binance_square(user_text)
+                                await send_response(app_session, chat_id, result, msg_id)
+                            continue
+
+                        if text.startswith("/autopost"):
+                            parts = original_text.split(maxsplit=1)
+                            arg = parts[1].strip() if len(parts) > 1 else ""
+                            arg_lower = arg.lower()
+
+                            if arg_lower == "on":
+                                agent.square_publisher.AUTO_SQUARE_ENABLED = True
+                                msg_text = "✅ Auto-posting is now **ENABLED**."
+                            elif arg_lower == "off":
+                                agent.square_publisher.AUTO_SQUARE_ENABLED = False
+                                msg_text = "⏸ Auto-posting is now **DISABLED**."
+
+                            elif arg_lower.startswith("time"):
+                                # /autopost time 13:30 22:50
+                                time_parts = arg.split()[1:]  # skip "time"
+                                if not time_parts:
+                                    times = get_times()
+                                    times_str = ", ".join(f"{t['hour']:02d}:{t['minute']:02d}" for t in times)
+                                    msg_text = f"⏰ Current schedule: `{times_str}` UTC\n\nTo change: `/autopost time 13:30 22:50`"
+                                else:
+                                    new_times = []
+                                    parse_ok = True
+                                    for tp in time_parts:
+                                        try:
+                                            h, m = tp.replace(".", ":").split(":")
+                                            h, m = int(h), int(m)
+                                            if 0 <= h < 24 and 0 <= m < 60:
+                                                new_times.append({"hour": h, "minute": m})
+                                            else:
+                                                parse_ok = False
+                                        except Exception:
+                                            parse_ok = False
+
+                                    if parse_ok and new_times:
+                                        set_times(new_times)
+                                        times_str = ", ".join(f"{t['hour']:02d}:{t['minute']:02d} UTC" for t in new_times)
+                                        msg_text = f"✅ Schedule updated!\n⏰ New times: `{times_str}`"
+                                    else:
+                                        msg_text = "⚠️ Wrong format. Example:\n`/autopost time 09:00 21:30`"
+
+                            elif arg_lower in ("", "status"):
+                                # No args — show full status
+                                msg_text = get_status_text()
+
+                            else:
+                                # Treat everything else as coin list: /autopost SOL RIVER FHE
+                                coin_args = arg.split()
+                                if len(coin_args) >= 1:
+                                    set_coins(coin_args)
+                                    coins_str = ", ".join(get_coins())
+                                    msg_text = f"✅ Coins updated!\n🪙 Auto-post list: `{coins_str}`"
+                                else:
+                                    msg_text = get_status_text()
+
                             await send_response(app_session, chat_id, msg_text, msg_id, parse_mode="Markdown")
+                            continue
+
+                        # ==========================================
+                        # TOP GAINERS / LOSERS (/top gainers, /top losers)
+                        # ==========================================
+                        if text.startswith("/top"):
+                            top_parts = text.split()
+                            mode = top_parts[1] if len(top_parts) > 1 else ""
+
+                            if mode in ("gainers", "gainer", "рост", "gainers24"):
+                                await send_response(app_session, chat_id, "⏳ Loading top gainers...", msg_id)
+                                try:
+                                    async with app_session.get("https://fapi.binance.com/fapi/v1/ticker/24hr", timeout=10) as resp:
+                                        if resp.status == 200:
+                                            tickers = await resp.json()
+                                            usdt_tickers = [t for t in tickers if t["symbol"].endswith("USDT")]
+                                            sorted_t = sorted(usdt_tickers, key=lambda x: float(x["priceChangePercent"]), reverse=True)[:10]
+                                            lines = ["🟢 *Top 10 Gainers (24h Futures):*\n"]
+                                            for i, t in enumerate(sorted_t, 1):
+                                                sym = t["symbol"].replace("USDT", "")
+                                                pct = float(t["priceChangePercent"])
+                                                price = float(t["lastPrice"])
+                                                vol = float(t["quoteVolume"])
+                                                vol_m = vol / 1_000_000
+                                                lines.append(f"{i}. `{sym}` → *+{pct:.2f}%*  |  ${price:,.4f}  |  Vol: ${vol_m:.1f}M")
+                                            await send_response(app_session, chat_id, "\n".join(lines), msg_id, parse_mode="Markdown")
+                                        else:
+                                            await send_response(app_session, chat_id, "❌ Binance API error", msg_id)
+                                except Exception as e:
+                                    await send_response(app_session, chat_id, f"❌ Error: {e}", msg_id)
+
+                            elif mode in ("losers", "loser", "падение", "losers24"):
+                                await send_response(app_session, chat_id, "⏳ Loading top losers...", msg_id)
+                                try:
+                                    async with app_session.get("https://fapi.binance.com/fapi/v1/ticker/24hr", timeout=10) as resp:
+                                        if resp.status == 200:
+                                            tickers = await resp.json()
+                                            usdt_tickers = [t for t in tickers if t["symbol"].endswith("USDT")]
+                                            sorted_t = sorted(usdt_tickers, key=lambda x: float(x["priceChangePercent"]))[:10]
+                                            lines = ["🔴 *Top 10 Losers (24h Futures):*\n"]
+                                            for i, t in enumerate(sorted_t, 1):
+                                                sym = t["symbol"].replace("USDT", "")
+                                                pct = float(t["priceChangePercent"])
+                                                price = float(t["lastPrice"])
+                                                vol = float(t["quoteVolume"])
+                                                vol_m = vol / 1_000_000
+                                                lines.append(f"{i}. `{sym}` → *{pct:.2f}%*  |  ${price:,.4f}  |  Vol: ${vol_m:.1f}M")
+                                            await send_response(app_session, chat_id, "\n".join(lines), msg_id, parse_mode="Markdown")
+                                        else:
+                                            await send_response(app_session, chat_id, "❌ Binance API error", msg_id)
+                                except Exception as e:
+                                    await send_response(app_session, chat_id, f"❌ Error: {e}", msg_id)
+                            else:
+                                await send_response(app_session, chat_id,
+                                    "📊 *Usage:*\n"
+                                    "`/top gainers` — Top 10 growth (24h)\n"
+                                    "`/top losers` — Top 10 drops (24h)",
+                                    msg_id, parse_mode="Markdown")
                             continue
 
                         # ==========================================
@@ -264,16 +392,27 @@ async def telegram_polling_loop(app_session):
                             symbol_raw = text.replace(matched_prefix, "").strip().split()[0].upper()
                             symbol = symbol_raw + "USDT" if not symbol_raw.endswith("USDT") else symbol_raw
 
-                            await send_response(app_session, chat_id, f"⏳ Fetching chart data... ({symbol})", msg_id)
+                            await send_response(app_session, chat_id, f"⏳ Fetching chart data + building trend line... ({symbol})", msg_id)
 
+                            # Fetch 199 candles for trend line construction (same as main scanner)
+                            raw_df_full = await fetch_klines(app_session, symbol, "4h", 199)
+                            # Also fetch 100 for indicators (lighter)
                             raw_df = await fetch_klines(app_session, symbol, "4h", 100)
-                            
+
                             if raw_df:
                                 df = pd.DataFrame(raw_df)
                                 last_row, full_df = calculate_binance_indicators(df, "4H")
                                 funding = await fetch_funding_rate(app_session, symbol)
                                 last_row["funding_rate"] = funding
                                 ai_msg = await ask_ai_analysis(symbol, "4H", last_row, lang=lang_pref)
+
+                                # --- BUILD TREND LINE & CHART ---
+                                chart_path = None
+                                if raw_df_full:
+                                    df_full = pd.DataFrame(raw_df_full)
+                                    line_data, _ = await find_trend_line(df_full, "4H", symbol)
+                                    if line_data:
+                                        chart_path = await draw_scan_chart(symbol, df_full, line_data, "4H")
 
                                 # --- PREPARE BINANCE SQUARE PUBLICATION & BUTTONS ---
                                 import uuid
@@ -292,9 +431,38 @@ async def telegram_polling_loop(app_session):
                                     ]
                                 }
 
-                                # Send response with inline buttons
-                                await send_response(app_session, chat_id, ai_msg, msg_id, reply_markup=scan_markup)
-                                
+                                # --- SEND: chart + AI text, or just text if no line found ---
+                                if chart_path:
+                                    import os as _os
+                                    safe_ai = ai_msg if len(ai_msg) < 800 else ai_msg[:800] + "...\n*[текст обрезан]*"
+                                    caption = f"📊 *{symbol} — 4H Trend Analysis*\n\n{safe_ai}"
+                                    photo_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+                                    try:
+                                        with open(chart_path, 'rb') as f:
+                                            data = aiohttp.FormData()
+                                            data.add_field('chat_id', str(chat_id))
+                                            data.add_field('caption', caption)
+                                            data.add_field('parse_mode', 'Markdown')
+                                            data.add_field('reply_to_message_id', str(msg_id))
+                                            data.add_field('reply_markup', json.dumps(scan_markup))
+                                            data.add_field('photo', f, filename=f"{symbol}.png", content_type='image/png')
+                                            async with app_session.post(photo_url, data=data, timeout=30) as resp:
+                                                if resp.status != 200:
+                                                    resp_text = await resp.text()
+                                                    logging.error(f"❌ Scan photo send error: {resp.status} - {resp_text}")
+                                                    # Fallback to text-only
+                                                    await send_response(app_session, chat_id, ai_msg, msg_id, reply_markup=scan_markup)
+                                    except Exception as e:
+                                        logging.error(f"❌ Error sending scan chart: {e}")
+                                        await send_response(app_session, chat_id, ai_msg, msg_id, reply_markup=scan_markup)
+                                    finally:
+                                        try:
+                                            _os.remove(chart_path)
+                                        except: pass
+                                else:
+                                    # No trend line found — send text only
+                                    await send_response(app_session, chat_id, ai_msg, msg_id, reply_markup=scan_markup)
+
                             continue
 
                         # ==========================================
