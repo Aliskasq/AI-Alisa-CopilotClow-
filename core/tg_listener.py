@@ -2,6 +2,7 @@ import asyncio
 import aiohttp
 import logging
 import re
+import os
 import pandas as pd
 import json
 from datetime import datetime, timezone, timedelta
@@ -36,7 +37,25 @@ from agent.skills import (
     get_address_pnl_rank
 )
 
-SQUARE_CACHE = {}
+SQUARE_CACHE_FILE = "data/square_cache.json"
+
+def _load_square_cache():
+    try:
+        if os.path.exists(SQUARE_CACHE_FILE):
+            with open(SQUARE_CACHE_FILE, 'r') as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+def _save_square_cache():
+    try:
+        with open(SQUARE_CACHE_FILE, 'w') as f:
+            json.dump(SQUARE_CACHE, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+SQUARE_CACHE = _load_square_cache()
 
 
 async def build_trend_text(session: aiohttp.ClientSession) -> str:
@@ -170,6 +189,7 @@ async def telegram_polling_loop(app_session):
                                     result_msg = await post_to_binance_square(text_to_post)
                                     await send_response(app_session, chat_id, result_msg)
                                     del SQUARE_CACHE[post_id]
+                                    _save_square_cache()
                                 else:
                                     await app_session.post(
                                         f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
@@ -550,6 +570,7 @@ async def telegram_polling_loop(app_session):
                                 post_id = str(uuid.uuid4())[:8]
                                 square_text = f"🚀 ${symbol} AI Market Analysis!\n\n{ai_msg}\n\n#AIBinance #BinanceSquare #Write2Earn"
                                 SQUARE_CACHE[post_id] = square_text
+                                _save_square_cache()
 
                                 app_link = f"https://app.binance.com/en/futures/{symbol.upper()}"
                                 web_link = f"https://www.binance.com/en/futures/{symbol.upper()}"

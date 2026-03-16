@@ -132,6 +132,12 @@ async def send_breakout_notification(symbol, df, line, tf, line_type, session, t
     post_id = str(uuid.uuid4())[:8]
     square_text = f"🚀 ${symbol} Technical Breakout Alert!\n\nTimeframe: {tf}\nCurrent Price: ${current_price:.4f}\n\n{ai_text}\n\n#AIBinance #BinanceSquare #Write2Earn"
     SQUARE_CACHE[post_id] = square_text
+    # Persist cache to disk
+    try:
+        from core.tg_listener import _save_square_cache
+        _save_square_cache()
+    except Exception:
+        pass
 
     # --- TELEGRAM MESSAGE DESIGN ---
     short_symbol = symbol.replace('USDT', '')
