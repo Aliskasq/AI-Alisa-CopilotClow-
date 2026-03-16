@@ -107,15 +107,35 @@ async def get_address_pnl_rank() -> str:
 # ---------------------------------------------------------
 # EXPORT AND PUBLICATION (Called directly by bot)
 # ---------------------------------------------------------
+import re as _re
+
+def _clean_text_for_square(text: str) -> str:
+    """Strip Telegram markdown/formatting, keep only plain text for Binance Square."""
+    # Remove markdown bold/italic
+    text = _re.sub(r'\*{1,2}(.*?)\*{1,2}', r'\1', text)
+    text = _re.sub(r'_{1,2}(.*?)_{1,2}', r'\1', text)
+    # Remove inline code
+    text = _re.sub(r'`([^`]*)`', r'\1', text)
+    # Remove code blocks
+    text = _re.sub(r'```[\s\S]*?```', '', text)
+    # Remove [текст обрезан] markers
+    text = _re.sub(r'\[.*?обрезан.*?\]', '', text)
+    # Clean up extra whitespace
+    text = _re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
 async def post_to_binance_square(text: str) -> str:
-    """Publications to Binance Square."""
+    """Publications to Binance Square. Auto-cleans markdown formatting."""
     if not SQUARE_OPENAPI_KEY:
         return "❌ Error: SQUARE_OPENAPI_KEY is not set."
+    
+    clean_text = _clean_text_for_square(text)
+    
     url = "https://www.binance.com/bapi/composite/v1/public/pgc/openApi/content/add"
     headers = {"X-Square-OpenAPI-Key": SQUARE_OPENAPI_KEY, "Content-Type": "application/json", "clienttype": "binanceSkill"}
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json={"bodyTextOnly": text}, timeout=10) as resp:
+            async with session.post(url, headers=headers, json={"bodyTextOnly": clean_text}, timeout=10) as resp:
                 data = await resp.json()
                 if data.get("code") == "000000":
                     post_id = data.get("data", {}).get("id", "unknown")
