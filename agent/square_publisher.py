@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 import aiohttp
 
 # Import required project modules
-from core.binance_api import fetch_klines
+from core.binance_api import fetch_klines, fetch_funding_rate
 from core.indicators import calculate_binance_indicators
 from agent.analyzer import ask_ai_analysis
 from agent.skills import post_to_binance_square
@@ -125,17 +125,35 @@ async def auto_square_poster(session: aiohttp.ClientSession):
         coins_to_post = get_coins()
         for symbol in coins_to_post:
             try:
-                logging.info(f"Generating Square post for {symbol}...")
+                short_coin = symbol.replace("USDT", "")
+                logging.info(f"📢 Generating Square post for {symbol}...")
 
-                raw_df = await fetch_klines(session, symbol, "1h", 100)
+                # Fetch 4H candles for better analysis (not 1H)
+                raw_df = await fetch_klines(session, symbol, "4h", 100)
                 if not raw_df:
                     continue
 
                 df = pd.DataFrame(raw_df)
-                last_row, _ = calculate_binance_indicators(df, "1H")
+                last_row, _ = calculate_binance_indicators(df, "4H")
 
-                ai_text = await ask_ai_analysis(symbol, "1H", last_row, lang="en")
-                square_text = f"🤖 Bi-Daily Market Pulse:\n\n{ai_text}"
+                # Fetch funding rate (was missing — caused "unknown")
+                funding = await fetch_funding_rate(session, symbol)
+                last_row["funding_rate"] = funding
+
+                # Extended AI analysis for richer Square posts
+                ai_text = await ask_ai_analysis(symbol, "4H", last_row, lang="en", extended=True)
+
+                # Build Square post with proper header
+                square_text = (
+                    f"🤖 AI-ALISA-COPILOTCLAW Automated Analysis\n\n"
+                    f"{ai_text}\n\n"
+                    f"🦞 Powered by OpenClaw AI | Binance Futures\n"
+                    f"#AIBinance #BinanceSquare #{short_coin} #Write2Earn"
+                )
+
+                # Trim to 1950 chars (Square post limit ~2000, keep margin)
+                if len(square_text) > 1950:
+                    square_text = square_text[:1940] + "..."
 
                 res = await post_to_binance_square(square_text)
                 logging.info(f"✅ Square Auto-Post result for {symbol}: {res}")
