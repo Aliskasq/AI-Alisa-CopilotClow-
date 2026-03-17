@@ -415,6 +415,31 @@ async def telegram_polling_loop(app_session):
 
                         # --- HANDLE REGULAR MESSAGES ---
                         msg = update.get("message", {})
+
+                        # --- NEW MEMBER WELCOME ---
+                        new_members = msg.get("new_chat_members", [])
+                        if new_members:
+                            chat_id = msg.get("chat", {}).get("id")
+                            for member in new_members:
+                                name = member.get("first_name", "User")
+                                welcome = (
+                                    f"👋 *Welcome, {name}!*\n\n"
+                                    "I'm *AiAlisa CopilotClaw* — AI Trading Assistant powered by OpenClaw 🦞\n\n"
+                                    "*📋 Commands / Команды:*\n\n"
+                                    "🔍 `scan BTC` / `посмотри BTC` — _AI analysis / анализ_\n"
+                                    "📚 `/learn BTC` — _education / обучение_\n"
+                                    "🏆 `/signals` — _winrate / точность_\n"
+                                    "💰 `margin 100 leverage 10` — _stop-loss calc_\n"
+                                    "🛠 `/skills` — _Web3 Skills_\n"
+                                    "📈 `/top gainers` · 📉 `/top losers`\n"
+                                    "📊 `/trend` — _breakouts / пробития_\n"
+                                    "🔔 `/alert BTC 69500` — _price alert_\n"
+                                    "🌐 `/lang en` | `/lang ru` — _language_\n\n"
+                                    "Type `/help` for full list! 🚀"
+                                )
+                                await send_response(app_session, chat_id, welcome, parse_mode="Markdown")
+                            continue
+
                         original_text = msg.get("text", "")
                         text = original_text.lower()
                         chat_id = msg.get("chat", {}).get("id")
@@ -517,50 +542,38 @@ async def telegram_polling_loop(app_session):
                         # BLOCK 3: BASIC COMMANDS (/start, /time, /autopost)
                         # ==========================================
                         if text.startswith("/start") or text.startswith("/help") or text in ["привет", "hello"]:
-                            if lang_pref == "ru":
-                                welcome_text = (
-                                    "🤖 *Привет! Я AiAlisa Copilot.*\n\n"
-                                    "*Команды:*\n"
-                                    "🔍 `посмотри BTC` — AI анализ с графиком\n"
-                                    "📚 `/learn BTC` — обучение: объяснение индикаторов\n"
-                                    "🏆 `/signals` — точность сигналов (winrate)\n"
-                                    "💰 `маржа 100 плечо 10 макс 20%` — расчёт стоп-лосса\n"
-                                    "🛠 `/skills` — меню Web3 Skills\n"
-                                    "📈 `/top gainers` — Топ 10 рост 24ч\n"
-                                    "📉 `/top losers` — Топ 10 падение 24ч\n"
-                                    "📊 `/trend` — все пробития с последнего скана\n"
-                                    "🔔 `/alert BTC 69500` — алерт на цену\n"
-                                    "🔔 `/alert list` — активные алерты\n"
-                                    "🔔 `/alert clear` — удалить все алерты\n"
-                                    "🌐 `/lang en` — switch to English"
-                                )
-                            else:
-                                welcome_text = (
-                                    "🤖 *Hello! I am AiAlisa Copilot.*\n\n"
-                                    "*Commands:*\n"
-                                    "🔍 `scan BTC` — AI analysis with chart\n"
-                                    "📚 `/learn BTC` — education: indicators explained\n"
-                                    "🏆 `/signals` — signal accuracy (winrate)\n"
-                                    "💰 `margin 100 leverage 10 max 20%` — stop-loss calculator\n"
-                                    "🛠 `/skills` — Web3 Skills menu\n"
-                                    "📈 `/top gainers` — Top 10 growth 24h\n"
-                                    "📉 `/top losers` — Top 10 drops 24h\n"
-                                    "📊 `/trend` — all breakouts since last scan\n"
-                                    "🔔 `/alert BTC 69500` — set price alert\n"
-                                    "🔔 `/alert list` — active alerts\n"
-                                    "🔔 `/alert clear` — remove all alerts\n"
-                                    "🌐 `/lang ru` — переключить на русский"
-                                )
+                            welcome_text = (
+                                "🤖 *AiAlisa CopilotClaw* — AI Trading Assistant\n\n"
+                                "*📋 Commands / Команды:*\n\n"
+                                "🔍 `scan BTC` / `посмотри BTC`\n"
+                                "    _AI analysis + chart / AI анализ + график_\n\n"
+                                "📚 `/learn BTC`\n"
+                                "    _Education: indicators explained / Обучение: объяснение индикаторов_\n\n"
+                                "🏆 `/signals`\n"
+                                "    _Signal accuracy & winrate / Точность сигналов_\n\n"
+                                "💰 `margin 100 leverage 10 max 20%`\n"
+                                "    _Stop-loss calculator / Расчёт стоп-лосса_\n\n"
+                                "🛠 `/skills`\n"
+                                "    _Web3 Skills menu / Меню Web3 навыков_\n\n"
+                                "📈 `/top gainers` · 📉 `/top losers`\n"
+                                "    _Top 10 growth/drops 24h / Топ 10 рост/падение_\n\n"
+                                "📊 `/trend`\n"
+                                "    _All breakouts since scan / Все пробития_\n\n"
+                                "🔔 `/alert BTC 69500`\n"
+                                "    _Price alert / Алерт на цену_\n"
+                                "🔔 `/alert list` — _active / активные_\n"
+                                "🔔 `/alert clear` — _remove all / удалить все_\n\n"
+                                "🌐 `/lang en` — English\n"
+                                "🌐 `/lang ru` — Русский"
+                            )
                             if is_admin(msg):
                                 welcome_text += (
-                                    "\n\n🔐 *Admin Commands:*\n"
-                                    "🧠 `/models` - Change AI Engine\n"
-                                    "⏰ `/time 18:30` - Set global scan schedule\n"
-                                    "📢 `/autopost` - Status / manage auto-posts\n"
-                                    "📢 `/autopost on / off` - Toggle auto-posts\n"
-                                    "🪙 `/autopost SOL BTC ETH` - Set coins\n"
-                                    "⏰ `/autopost time 13:30 22:50` - Set schedule\n"
-                                    "✏️ `/post текст` - Post to Binance Square"
+                                    "\n\n🔐 *Admin:*\n"
+                                    "🧠 `/models` — AI engine\n"
+                                    "⏰ `/time 18:30` — scan schedule\n"
+                                    "📢 `/autopost on/off` — auto Square\n"
+                                    "🪙 `/autopost SOL BTC` — coins\n"
+                                    "✏️ `/post text` — post to Square"
                                 )
                             await send_response(app_session, chat_id, welcome_text, msg_id, parse_mode="Markdown")
                             continue
