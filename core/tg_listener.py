@@ -148,18 +148,18 @@ from agent.skills import (
 )
 
 
-async def build_trend_text(session: aiohttp.ClientSession) -> str:
+async def build_trend_text(session: aiohttp.ClientSession, lang: str = "ru") -> str:
     """Build a formatted list of all breakout coins with breakout price and current live price."""
     log = load_breakout_log()
     if not log:
-        return "📭 Нет пробитий с последнего скана."
+        return "📭 No breakouts since last scan." if lang == "en" else "📭 Нет пробитий с последнего скана."
 
-    lines = ["📊 *Пробития трендовых линий:*\n"]
+    header = "📊 *Trendline Breakouts:*\n" if lang == "en" else "📊 *Пробития трендовых линий:*\n"
+    lines = [header]
     for entry in log:
         sym = entry["symbol"].replace("USDT", "")
         tf = entry["tf"]
         bp = entry["breakout_price"]
-        # Fetch live price
         current_price = entry["current_price"]
         try:
             url = f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={entry['symbol']}"
@@ -172,13 +172,17 @@ async def build_trend_text(session: aiohttp.ClientSession) -> str:
 
         diff_pct = ((current_price / bp) - 1) * 100 if bp > 0 else 0
         arrow = "🟢" if diff_pct >= 0 else "🔴"
+        bp_label = "Breakout" if lang == "en" else "Пробитие"
+        now_label = "Now" if lang == "en" else "Сейчас"
         lines.append(
             f"{arrow} `${sym}` ({tf})\n"
-            f"    Пробитие: `${bp:.6f}`\n"
-            f"    Сейчас: `${current_price:.6f}` (*{diff_pct:+.2f}%*)"
+            f"    {bp_label}: `${bp:.6f}`\n"
+            f"    {now_label}: `${current_price:.6f}` (*{diff_pct:+.2f}%*)"
         )
     
-    lines.append(f"\n_Всего: {len(log)} монет_")
+    total_label = "Total" if lang == "en" else "Всего"
+    coins_label = "coins" if lang == "en" else "монет"
+    lines.append(f"\n_{total_label}: {len(log)} {coins_label}_")
     return "\n".join(lines)
 
 
@@ -1029,8 +1033,9 @@ async def telegram_polling_loop(app_session):
                         # TREND BREAKOUT LIST (/trend) — PUBLIC
                         # ==========================================
                         if text.startswith("/trend") or text in ["тренд", "тренды", "пробития"]:
-                            await send_response(app_session, chat_id, "⏳ Загружаю пробития...", msg_id)
-                            trend_text = await build_trend_text(app_session)
+                            loading = "⏳ Loading breakouts..." if lang_pref == "en" else "⏳ Загружаю пробития..."
+                            await send_response(app_session, chat_id, loading, msg_id)
+                            trend_text = await build_trend_text(app_session, lang=lang_pref)
                             await send_response(app_session, chat_id, trend_text, msg_id, parse_mode="Markdown")
                             continue
 
