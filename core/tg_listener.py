@@ -797,7 +797,7 @@ async def telegram_polling_loop(app_session):
                                         "bot_token": BOT_TOKEN
                                     }
 
-                                ai_msg = await ask_ai_analysis(symbol, "4H", last_row, lang=lang_pref, telegram_stream=tg_stream)
+                                ai_msg = await ask_ai_analysis(symbol, "4H", last_row, lang=lang_pref, telegram_stream=tg_stream, extended=True)
 
                                 # Schedule delayed deletion of streaming message (15s after chart sent)
                                 async def _delayed_delete(sess, cid, mid, delay=15):
@@ -838,10 +838,18 @@ async def telegram_polling_loop(app_session):
                                     ]
                                 }
 
+                                # --- SPLIT AI RESPONSE: Part 1 (caption) + Part 2 (extended) ---
+                                ai_part1 = ai_msg
+                                ai_part2 = None
+                                if "---" in ai_msg:
+                                    parts = ai_msg.split("---", 1)
+                                    ai_part1 = parts[0].strip()
+                                    ai_part2 = parts[1].strip() if len(parts) > 1 and parts[1].strip() else None
+
                                 # --- SEND: chart + AI text, or just text if no line found ---
                                 if chart_path:
                                     import os as _os
-                                    safe_ai = ai_msg if len(ai_msg) < 800 else ai_msg[:800] + "...\n*[текст обрезан]*"
+                                    safe_ai = ai_part1 if len(ai_part1) < 800 else ai_part1[:800] + "..."
                                     caption = f"📊 *{symbol} — 4H Trend Analysis*\n\n{safe_ai}"
                                     photo_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
                                     try:
@@ -868,7 +876,14 @@ async def telegram_polling_loop(app_session):
                                         except: pass
                                 else:
                                     # No trend line found — send text only
-                                    await send_response(app_session, chat_id, ai_msg, msg_id, reply_markup=scan_markup)
+                                    await send_response(app_session, chat_id, ai_part1, msg_id, reply_markup=scan_markup)
+
+                                # Send extended analysis as second message
+                                if ai_part2:
+                                    extended_text = f"🔬 *Extended AI Analysis — {symbol}*\n\n{ai_part2}"
+                                    if len(extended_text) > 4000:
+                                        extended_text = extended_text[:4000] + "..."
+                                    await send_response(app_session, chat_id, extended_text, parse_mode="Markdown")
 
                                 # Delete streaming message 15s after chart/text sent
                                 if stream_msg_id:
