@@ -594,9 +594,11 @@ async def telegram_polling_loop(app_session):
                                     "📢 `/autopost on/off` — auto Square\n"
                                     "🪙 `/autopost SOL BTC` — coins\n"
                                     "✏️ `/post text` — post to Square\n"
-                                    "💼 `/paper BTC 74000 long 5x` — paper trading\n"
-                                    "💼 `/paper` — view portfolio P&L\n"
-                                    "💼 `/paper clear` — reset portfolio"
+                                    "💼 `/paper BTC 74000 long 5x sl 73000 tp 75000`\n"
+                                    "💼 `/paper` — portfolio + live P&L\n"
+                                    "💼 `/paper close 1` — close position\n"
+                                    "💼 `/paper history` — trade history + winrate\n"
+                                    "💼 `/paper clear` — reset all"
                                 )
                             await send_response(app_session, chat_id, welcome_text, msg_id, parse_mode="Markdown")
                             continue
@@ -1043,87 +1045,196 @@ async def telegram_polling_loop(app_session):
                             user_id = str(msg.get("from", {}).get("id", 0))
                             parts = original_text.split()
                             paper = _load_paper()
-                            user_positions = paper.get(user_id, [])
+                            if user_id not in paper:
+                                paper[user_id] = {"open": [], "closed": []}
+                            # Migrate old format (list → dict)
+                            if isinstance(paper[user_id], list):
+                                paper[user_id] = {"open": paper[user_id], "closed": []}
+                            user_data = paper[user_id]
 
                             # /paper clear — remove all positions
-                            if len(parts) == 2 and parts[1].lower() in ("clear", "очистить"):
-                                paper[user_id] = []
+                            if len(parts) == 2 and parts[1].lower() in ("clear", "очистить", "reset"):
+                                paper[user_id] = {"open": [], "closed": []}
                                 _save_paper(paper)
-                                clr = "✅ Paper portfolio cleared." if lang_pref == "en" else "✅ Виртуальный портфель очищен."
+                                clr = "✅ Paper portfolio reset. History cleared." if lang_pref == "en" else "✅ Портфель сброшен. История очищена."
                                 await send_response(app_session, chat_id, clr, msg_id)
                                 continue
 
-                            # /paper BTC 74000 long 5x — add position
-                            if len(parts) >= 4:
-                                coin_raw = parts[1].upper().strip()
-                                p_symbol = coin_raw + "USDT" if not coin_raw.endswith("USDT") else coin_raw
-                                try:
-                                    entry_price = float(parts[2].replace(",", "."))
-                                except ValueError:
-                                    await send_response(app_session, chat_id, "⚠️ Usage: `/paper BTC 74000 long 5x`", msg_id, parse_mode="Markdown")
+                            # /paper close 1 — close position by number
+                            if len(parts) >= 2 and parts[1].lower() in ("close", "закрыть"):
+                                if not user_data["open"]:
+                                    await send_response(app_session, chat_id, "📭 No open positions." if lang_pref == "en" else "📭 Нет открытых позиций.", msg_id)
+                                    continue
+                                idx = 0
+                                if len(parts) >= 3 and parts[2].isdigit():
+                                    idx = int(parts[2]) - 1
+                                if idx < 0 or idx >= len(user_data["open"]):
+                                    await send_response(app_session, chat_id, f"⚠️ Position #{idx+1} not found. Use `/paper` to see list.", msg_id, parse_mode="Markdown")
                                     continue
 
-                                direction = "long"
-                                if len(parts) >= 4 and parts[3].lower() in ("short", "шорт"):
-                                    direction = "short"
-
-                                leverage = 1
-                                for p in parts:
-                                    p_clean = p.lower().replace("x", "").replace("х", "")
-                                    if p_clean.isdigit() and int(p_clean) > 1 and int(p_clean) <= 125:
-                                        leverage = int(p_clean)
-
-                                position = {
-                                    "symbol": p_symbol,
-                                    "entry": entry_price,
-                                    "direction": direction,
-                                    "leverage": leverage,
-                                    "time": datetime.now(timezone.utc).isoformat()[:16]
-                                }
-                                user_positions.append(position)
-                                paper[user_id] = user_positions
-                                _save_paper(paper)
-
-                                short_coin = p_symbol.replace("USDT", "")
-                                arrow = "📈 LONG" if direction == "long" else "📉 SHORT"
-                                if lang_pref == "ru":
-                                    await send_response(app_session, chat_id,
-                                        f"✅ Виртуальная позиция открыта!\n\n"
-                                        f"🪙 `{short_coin}` {arrow} {leverage}x\n"
-                                        f"💰 Вход: `${entry_price:.6f}`",
-                                        msg_id, parse_mode="Markdown")
-                                else:
-                                    await send_response(app_session, chat_id,
-                                        f"✅ Paper position opened!\n\n"
-                                        f"🪙 `{short_coin}` {arrow} {leverage}x\n"
-                                        f"💰 Entry: `${entry_price:.6f}`",
-                                        msg_id, parse_mode="Markdown")
-                                continue
-
-                            # /paper — show portfolio with live P&L
-                            if not user_positions:
-                                empty = "📭 No paper positions.\n\nUsage: `/paper BTC 74000 long 5x`" if lang_pref == "en" else "📭 Нет виртуальных позиций.\n\nИспользование: `/paper BTC 74000 long 5x`"
-                                await send_response(app_session, chat_id, empty, msg_id, parse_mode="Markdown")
-                                continue
-
-                            header = "💼 *Paper Trading Portfolio*\n\n" if lang_pref == "en" else "💼 *Виртуальный портфель*\n\n"
-                            lines = [header]
-                            total_pnl = 0
-
-                            for i, pos in enumerate(user_positions, 1):
+                                pos = user_data["open"].pop(idx)
                                 sym = pos["symbol"]
                                 entry = pos["entry"]
                                 direction = pos["direction"]
                                 lev = pos["leverage"]
                                 short_sym = sym.replace("USDT", "")
 
-                                # Fetch current price
+                                # Fetch close price
+                                close_price = entry
+                                try:
+                                    async with app_session.get(f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={sym}", timeout=5) as resp:
+                                        if resp.status == 200:
+                                            d = await resp.json()
+                                            close_price = float(d["price"])
+                                except Exception:
+                                    pass
+
+                                if direction == "long":
+                                    pnl_pct = ((close_price - entry) / entry) * 100 * lev
+                                else:
+                                    pnl_pct = ((entry - close_price) / entry) * 100 * lev
+
+                                pos["close_price"] = close_price
+                                pos["close_time"] = datetime.now(timezone.utc).isoformat()[:16]
+                                pos["pnl_pct"] = round(pnl_pct, 2)
+                                user_data["closed"].append(pos)
+                                _save_paper(paper)
+
+                                icon = "🟢" if pnl_pct >= 0 else "🔴"
+                                arrow = "LONG" if direction == "long" else "SHORT"
+                                if lang_pref == "ru":
+                                    await send_response(app_session, chat_id,
+                                        f"{icon} Позиция закрыта!\n\n"
+                                        f"🪙 `{short_sym}` {arrow} {lev}x\n"
+                                        f"💰 Вход: `${entry:.4f}` → Выход: `${close_price:.4f}`\n"
+                                        f"📊 P&L: `{pnl_pct:+.2f}%`",
+                                        msg_id, parse_mode="Markdown")
+                                else:
+                                    await send_response(app_session, chat_id,
+                                        f"{icon} Position closed!\n\n"
+                                        f"🪙 `{short_sym}` {arrow} {lev}x\n"
+                                        f"💰 Entry: `${entry:.4f}` → Exit: `${close_price:.4f}`\n"
+                                        f"📊 P&L: `{pnl_pct:+.2f}%`",
+                                        msg_id, parse_mode="Markdown")
+                                continue
+
+                            # /paper history — show closed trades
+                            if len(parts) == 2 and parts[1].lower() in ("history", "история"):
+                                closed = user_data.get("closed", [])
+                                if not closed:
+                                    await send_response(app_session, chat_id, "📭 No closed trades yet." if lang_pref == "en" else "📭 Нет закрытых сделок.", msg_id)
+                                    continue
+                                header = "📜 *Trade History*\n\n" if lang_pref == "en" else "📜 *История сделок*\n\n"
+                                lines = [header]
+                                total = 0
+                                wins = 0
+                                for i, c in enumerate(closed[-20:], 1):  # Last 20
+                                    pnl = c.get("pnl_pct", 0)
+                                    total += pnl
+                                    if pnl > 0:
+                                        wins += 1
+                                    icon = "🟢" if pnl >= 0 else "🔴"
+                                    short = c["symbol"].replace("USDT", "")
+                                    arr = "L" if c["direction"] == "long" else "S"
+                                    lines.append(f"{icon} `{short}` {arr} {c['leverage']}x | `{pnl:+.2f}%` | {c.get('close_time', '')}")
+                                wr = (wins / len(closed) * 100) if closed else 0
+                                lines.append(f"\n📊 *Trades: {len(closed)} | Winrate: {wr:.0f}% | Total P&L: {total:+.2f}%*")
+                                await send_response(app_session, chat_id, "\n".join(lines), msg_id, parse_mode="Markdown")
+                                continue
+
+                            # /paper BTC 74000 long 5x sl 73000 tp 75000 — add position
+                            if len(parts) >= 4:
+                                coin_raw = parts[1].upper().strip()
+                                p_symbol = coin_raw + "USDT" if not coin_raw.endswith("USDT") else coin_raw
+                                try:
+                                    entry_price = float(parts[2].replace(",", "."))
+                                except ValueError:
+                                    await send_response(app_session, chat_id, "⚠️ `/paper BTC 74000 long 5x sl 73000 tp 75000`", msg_id, parse_mode="Markdown")
+                                    continue
+
+                                direction = "long"
+                                if len(parts) >= 4 and parts[3].lower() in ("short", "шорт", "s"):
+                                    direction = "short"
+
+                                leverage = 1
+                                sl_price = None
+                                tp_price = None
+                                for j, p in enumerate(parts):
+                                    p_low = p.lower()
+                                    # Parse leverage (5x, 10x)
+                                    p_clean = p_low.replace("x", "").replace("х", "")
+                                    if p_clean.isdigit() and 1 < int(p_clean) <= 125:
+                                        leverage = int(p_clean)
+                                    # Parse SL
+                                    if p_low in ("sl", "стоп") and j + 1 < len(parts):
+                                        try:
+                                            sl_price = float(parts[j+1].replace(",", "."))
+                                        except ValueError:
+                                            pass
+                                    # Parse TP
+                                    if p_low in ("tp", "тейк") and j + 1 < len(parts):
+                                        try:
+                                            tp_price = float(parts[j+1].replace(",", "."))
+                                        except ValueError:
+                                            pass
+
+                                position = {
+                                    "symbol": p_symbol,
+                                    "entry": entry_price,
+                                    "direction": direction,
+                                    "leverage": leverage,
+                                    "sl": sl_price,
+                                    "tp": tp_price,
+                                    "time": datetime.now(timezone.utc).isoformat()[:16]
+                                }
+                                user_data["open"].append(position)
+                                _save_paper(paper)
+
+                                short_coin = p_symbol.replace("USDT", "")
+                                arrow = "📈 LONG" if direction == "long" else "📉 SHORT"
+                                sl_text = f"\n🚫 SL: `${sl_price:.4f}`" if sl_price else ""
+                                tp_text = f"\n🎯 TP: `${tp_price:.4f}`" if tp_price else ""
+                                if lang_pref == "ru":
+                                    await send_response(app_session, chat_id,
+                                        f"✅ Виртуальная позиция открыта!\n\n"
+                                        f"🪙 `{short_coin}` {arrow} {leverage}x\n"
+                                        f"💰 Вход: `${entry_price:.6f}`{sl_text}{tp_text}",
+                                        msg_id, parse_mode="Markdown")
+                                else:
+                                    await send_response(app_session, chat_id,
+                                        f"✅ Paper position opened!\n\n"
+                                        f"🪙 `{short_coin}` {arrow} {leverage}x\n"
+                                        f"💰 Entry: `${entry_price:.6f}`{sl_text}{tp_text}",
+                                        msg_id, parse_mode="Markdown")
+                                continue
+
+                            # /paper — show portfolio with live P&L + SL/TP status
+                            open_positions = user_data.get("open", [])
+                            if not open_positions:
+                                empty = "📭 No open positions.\n\n`/paper BTC 74000 long 5x sl 73000 tp 75000`" if lang_pref == "en" else "📭 Нет открытых позиций.\n\n`/paper BTC 74000 long 5x sl 73000 tp 75000`"
+                                await send_response(app_session, chat_id, empty, msg_id, parse_mode="Markdown")
+                                continue
+
+                            header = "💼 *Paper Trading Portfolio*\n\n" if lang_pref == "en" else "💼 *Виртуальный портфель*\n\n"
+                            lines = [header]
+                            total_pnl = 0
+                            auto_closed = []
+
+                            for i, pos in enumerate(open_positions, 1):
+                                sym = pos["symbol"]
+                                entry = pos["entry"]
+                                direction = pos["direction"]
+                                lev = pos["leverage"]
+                                sl = pos.get("sl")
+                                tp = pos.get("tp")
+                                short_sym = sym.replace("USDT", "")
+
                                 now_price = entry
                                 try:
                                     async with app_session.get(f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={sym}", timeout=5) as resp:
                                         if resp.status == 200:
-                                            data = await resp.json()
-                                            now_price = float(data["price"])
+                                            d = await resp.json()
+                                            now_price = float(d["price"])
                                 except Exception:
                                     pass
 
@@ -1132,18 +1243,66 @@ async def telegram_polling_loop(app_session):
                                 else:
                                     pnl_pct = ((entry - now_price) / entry) * 100 * lev
 
+                                # Check SL/TP hit
+                                hit = ""
+                                if sl and direction == "long" and now_price <= sl:
+                                    hit = " 🚫 *SL HIT*"
+                                    auto_closed.append(i - 1)
+                                elif sl and direction == "short" and now_price >= sl:
+                                    hit = " 🚫 *SL HIT*"
+                                    auto_closed.append(i - 1)
+                                elif tp and direction == "long" and now_price >= tp:
+                                    hit = " 🎯 *TP HIT*"
+                                    auto_closed.append(i - 1)
+                                elif tp and direction == "short" and now_price <= tp:
+                                    hit = " 🎯 *TP HIT*"
+                                    auto_closed.append(i - 1)
+
                                 total_pnl += pnl_pct
                                 icon = "🟢" if pnl_pct >= 0 else "🔴"
-                                arrow = "LONG" if direction == "long" else "SHORT"
+                                arrow_txt = "LONG" if direction == "long" else "SHORT"
+                                sl_line = f"   🚫 SL: `${sl:.4f}`" if sl else ""
+                                tp_line = f" | 🎯 TP: `${tp:.4f}`" if tp else ""
 
                                 lines.append(
-                                    f"{icon} `{short_sym}` {arrow} {lev}x\n"
+                                    f"#{i} {icon} `{short_sym}` {arrow_txt} {lev}x{hit}\n"
+                                    f"   Entry: `${entry:.4f}` → Now: `${now_price:.4f}`\n"
+                                    f"   P&L: `{pnl_pct:+.2f}%`\n"
+                                    f"{sl_line}{tp_line}\n" if (sl or tp) else
+                                    f"#{i} {icon} `{short_sym}` {arrow_txt} {lev}x{hit}\n"
                                     f"   Entry: `${entry:.4f}` → Now: `${now_price:.4f}`\n"
                                     f"   P&L: `{pnl_pct:+.2f}%`\n"
                                 )
 
+                            # Auto-close SL/TP positions
+                            for idx in sorted(auto_closed, reverse=True):
+                                pos = open_positions.pop(idx)
+                                try:
+                                    async with app_session.get(f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={pos['symbol']}", timeout=5) as resp:
+                                        if resp.status == 200:
+                                            d = await resp.json()
+                                            cp = float(d["price"])
+                                        else:
+                                            cp = pos["entry"]
+                                except Exception:
+                                    cp = pos["entry"]
+                                if pos["direction"] == "long":
+                                    pnl = ((cp - pos["entry"]) / pos["entry"]) * 100 * pos["leverage"]
+                                else:
+                                    pnl = ((pos["entry"] - cp) / pos["entry"]) * 100 * pos["leverage"]
+                                pos["close_price"] = cp
+                                pos["close_time"] = datetime.now(timezone.utc).isoformat()[:16]
+                                pos["pnl_pct"] = round(pnl, 2)
+                                user_data["closed"].append(pos)
+
+                            if auto_closed:
+                                _save_paper(paper)
+
                             total_icon = "🟢" if total_pnl >= 0 else "🔴"
+                            closed_count = len(user_data.get("closed", []))
                             lines.append(f"\n{total_icon} *Total P&L: {total_pnl:+.2f}%*")
+                            if closed_count:
+                                lines.append(f"📜 Closed trades: {closed_count} (`/paper history`)")
 
                             full_text = "\n".join(lines)
                             if len(full_text) > 4000:

@@ -229,9 +229,11 @@ Alisa provides a comprehensive control panel via Telegram:
 | `/autopost SOL BTC ETH` | Set coins for auto-posting |
 | `/autopost time 13:30 22:50` | Set auto-post schedule |
 | `/post [text]` | ✏️ Manually publish to Binance Square |
-| `/paper BTC 74000 long 5x` | 💼 Open virtual paper trading position |
-| `/paper` | 💼 View portfolio with live P&L (real Binance prices) |
-| `/paper clear` | 💼 Reset paper portfolio |
+| `/paper BTC 74000 long 5x sl 73000 tp 75000` | 💼 Open paper position with optional SL/TP |
+| `/paper` | 💼 View portfolio with live P&L + SL/TP status (auto-closes on hit) |
+| `/paper close 1` | 💼 Manually close position #1 at current market price |
+| `/paper history` | 💼 View all closed trades with winrate |
+| `/paper clear` | 💼 Reset entire paper portfolio + history |
 | `📢 Post to Square` button | Admin-verified inline publishing under each signal |
 
 **🤖 Automated Tasks:**
