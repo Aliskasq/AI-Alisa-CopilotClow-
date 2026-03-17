@@ -157,13 +157,17 @@ async def build_trend_text(session: aiohttp.ClientSession, lang: str = "ru") -> 
     # Batch fetch ALL prices in one request (instead of 50+ individual calls)
     price_map = {}
     try:
+        logging.info(f"📊 /trend: fetching prices for {len(log)} breakouts...")
         async with session.get("https://fapi.binance.com/fapi/v1/ticker/price", timeout=10) as resp:
             if resp.status == 200:
                 all_prices = await resp.json()
                 for p in all_prices:
                     price_map[p["symbol"]] = float(p["price"])
-    except Exception:
-        pass
+                logging.info(f"📊 /trend: got {len(price_map)} prices")
+            else:
+                logging.warning(f"⚠️ /trend: price API returned {resp.status}")
+    except Exception as e:
+        logging.error(f"❌ /trend: price fetch error: {e}")
 
     header = "📊 *Trendline Breakouts:*\n" if lang == "en" else "📊 *Пробития трендовых линий:*\n"
     lines = [header]
@@ -1128,8 +1132,28 @@ async def telegram_polling_loop(app_session):
                         if text.startswith("/trend") or text in ["тренд", "тренды", "пробития"]:
                             loading = "⏳ Loading breakouts..." if lang_pref == "en" else "⏳ Загружаю пробития..."
                             await send_response(app_session, chat_id, loading, msg_id)
-                            trend_text = await build_trend_text(app_session, lang=lang_pref)
-                            await send_response(app_session, chat_id, trend_text, msg_id, parse_mode="Markdown")
+                            try:
+                                trend_text = await build_trend_text(app_session, lang=lang_pref)
+                                # Split into chunks if too long for Telegram (4096 limit)
+                                if len(trend_text) <= 4000:
+                                    await send_response(app_session, chat_id, trend_text, msg_id, parse_mode="Markdown")
+                                else:
+                                    chunks = []
+                                    current = ""
+                                    for line in trend_text.split("\n"):
+                                        if len(current) + len(line) + 1 > 3900:
+                                            chunks.append(current)
+                                            current = line
+                                        else:
+                                            current += "\n" + line if current else line
+                                    if current:
+                                        chunks.append(current)
+                                    for i, chunk in enumerate(chunks):
+                                        rid = msg_id if i == 0 else None
+                                        await send_response(app_session, chat_id, chunk, rid, parse_mode="Markdown")
+                            except Exception as e:
+                                logging.error(f"❌ /trend error: {e}")
+                                await send_response(app_session, chat_id, f"❌ Error: {e}", msg_id)
                             continue
 
                         # ==========================================
