@@ -145,7 +145,7 @@ All indicators + skills are explained in plain language via `/learn` education m
 └──────────────┬──────────────────────────────────────┘
                │
 ┌──────────────▼──────────────────────────────────────┐
-│          BINANCE FUTURES API (1000+ pairs)           │
+│        BINANCE FUTURES API (540+ pairs, 4H+1D)       │
 │    fetch_klines() → Logarithmic Geometry Scanner     │
 │    199 candles × 4H/1D → find_trend_line()           │
 │    Smart API Weight Limiter (auto-pause > 2000)      │
@@ -238,7 +238,7 @@ Alisa provides a comprehensive control panel via Telegram:
 | `📢 Post to Square` button | Admin-verified inline publishing under each signal |
 
 **🤖 Automated Tasks:**
-*   **Global Geometric Scan** — Runs at configured `/time` schedule. Scans 1000+ coins on 4H & 1D.
+*   **Global Geometric Scan** — Runs at configured `/time` schedule. Scans all 540+ Futures coins on 4H & 1D.
 *   **Daily Trend Summary** — Auto-sends all breakout coins at 23:57 UTC.
 *   **Square Auto-Publisher** — Extended AI analysis with funding rate, all indicators, Web3 skills + `#AIBinance` hashtags. Enable via `/autopost on`.
 *   **Price Alert Monitor** — Checks every 30 seconds, persists across restarts.
