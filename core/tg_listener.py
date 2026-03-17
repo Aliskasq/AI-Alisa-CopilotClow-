@@ -481,7 +481,9 @@ async def telegram_polling_loop(app_session):
                                 "📈 `/top gainers` - Top 10 Futures growth 24h\n"
                                 "📉 `/top losers` - Top 10 Futures drops 24h\n"
                                 "📊 `/trend` - All breakout coins since last scan\n"
-                                "🔔 `/alert BTC 69500` - Price alert notification"
+                                "🔔 `/alert BTC 69500` - Set price alert\n"
+                                "🔔 `/alert list` - Show active alerts\n"
+                                "🔔 `/alert clear` - Remove all alerts"
                             )
                             if is_admin(msg):
                                 welcome_text += (
