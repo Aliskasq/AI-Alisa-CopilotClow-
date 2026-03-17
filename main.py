@@ -123,7 +123,8 @@ async def main():
                                     add_breakout_entry(s, tf_label, line_res.get("trigger_price", 0), cp, line_res.get("type", ""))
                             
                         logging.info(f"📊 Analysis progress: {min(i + chunk_size, len(symbols))} / {len(symbols)}")
-                        await asyncio.sleep(0.05)
+                        # Rate limit: spread global scan over ~4 minutes (safe for 2400 weight/min)
+                        await asyncio.sleep(1.5)
 
                     last_full_calc_date = now_msk.date()
                     with open(TREND_STATE_FILE, 'w') as f:
@@ -253,7 +254,8 @@ async def main():
                             else:
                                 logging.warning(f"🔄 Signal {symbol} ({tf_key}) LEFT IN QUEUE. Will retry in 5 minutes.")
 
-                    await asyncio.sleep(1.0)
+                    # Rate limit: spread monitoring over ~90s (safe for 2400 weight/min)
+                    await asyncio.sleep(3.0)
 
                 # Clean up processed alerts
                 if alerts_to_remove:
