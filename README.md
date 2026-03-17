@@ -11,15 +11,27 @@ Designed to enhance the Binance ecosystem, Alisa solves three major challenges:
 2. **Risk Management:** Interactively calculates exact Stop-Loss limits based on user-defined margin and leverage.
 3. **Community Marketing:** Empowers Crypto-Influencers by providing 1-click & fully automated AI publications directly to **Binance Square**.
 
-### 🦞 Deep OpenClaw SDK Integration (3 Services)
+### ⚡ NEW: Real-Time AI Streaming, Education & Signal Tracking
 
-AiAlisa is not just "using OpenClaw for chat" — the entire AI pipeline is built on **three distinct CMDOP/OpenClaw SDK services**:
+| Feature | Description |
+|---|---|
+| 🔴 **Live AI Streaming** | Real-time SSE token streaming — watch AI think live in Telegram |
+| 📚 **Education Mode** | `/learn BTC` — explains every indicator in plain language for beginners |
+| 🏆 **Signal Tracker** | `/signals` — live winrate accuracy of all bot predictions |
+| 🔬 **Extended Analysis** | `scan BTC` returns deep breakdown of all 12+ indicators + Web3 skills |
+| 🌐 **Bilingual** | `/lang en` / `/lang ru` — full English & Russian support |
+| 🔔 **Smart Alerts** | `/alert BTC 75000` — persistent price alerts that survive restarts |
+
+### 🦞 Deep OpenClaw SDK Integration (4 Services)
+
+AiAlisa is not just "using OpenClaw for chat" — the entire AI pipeline is built on **four distinct CMDOP/OpenClaw SDK services**:
 
 | SDK Service | Purpose | Fallback |
 |---|---|---|
 | **`client.extract.run(model=TradeVerdict)`** | Returns **typed Pydantic models** (entry, SL, TP as floats) instead of raw text. Enables programmatic signal validation. | `agent.run()` → OpenRouter |
 | **`client.skills.run(skill_name, prompt)`** | All 7 Binance Web3 Skills are routed through the **OpenClaw Skills API** for orchestrated execution. | Direct HTTP to Binance Web3 API |
 | **`client.agent.run(prompt)`** | Core AI inference for trading verdicts via CMDOP Cloud relay. | OpenRouter aiohttp failsafe |
+| **SSE Streaming** | Real-time token-by-token streaming to Telegram via `stream=true`. Users see AI reasoning appear live with 🔴 LIVE indicator. | Progressive display fallback |
 
 **Why this matters:** Every AI decision passes through OpenClaw's typed extraction pipeline. The `TradeVerdict` Pydantic model ensures the agent returns **validated floats** for Entry/SL/TP — not just text that might hallucinate wrong numbers. This is critical for real trading risk management.
 
@@ -49,7 +61,24 @@ Alisa is not just a responder; she operates in the background. The bot features 
 ![Screenshot_20260312_221919_com_termux_TermuxActivity_edit_461923476867955](https://github.com/user-attachments/assets/5ad82289-4531-477f-9287-38c35bc2eb6a)
 
 
-### 4. Interactive Binance Web3 Skills Dashboard
+### 4. Real-Time AI Streaming (🔴 LIVE)
+When users type `scan BTC` or `look ETH`, AiAlisa streams the AI's reasoning **token by token** directly into Telegram via Server-Sent Events (SSE). The message updates live every 1.5 seconds, showing the AI's thought process in real-time with a blinking cursor (▌) and a 🔴 LIVE indicator. After completion, the streaming message is replaced with the final chart + verdict.
+
+This creates a unique "AI thinking" experience that no other Binance bot offers.
+
+### 5. Education Mode: Learn Crypto Indicators
+The `/learn BTC` command transforms AiAlisa into a **crypto educator**. It fetches real-time indicator values for any coin and explains each one in plain language:
+
+- **RSI = 72.1** → "Overbought ⚠️ — price momentum is high, potential pullback"
+- **ADX = 18.5** → "Weak/sideways trend — no clear direction"
+- **Ichimoku → Above Cloud** → "Bullish trend — price is above the Ichimoku cloud"
+
+Covers all 10+ indicators: RSI, MFI, ADX, StochRSI, MACD, OBV, Ichimoku, SuperTrend, Volume Decay, Funding Rate. Available in English and Russian.
+
+### 6. Signal Accuracy Tracker
+The `/signals` command provides **full transparency** on bot performance. It compares every breakout signal's entry price against the current market price, calculating real-time profit/loss and overall winrate. This builds user trust and demonstrates the geometric scanner's effectiveness.
+
+### 7. Interactive Binance Web3 Skills Dashboard
 Powered by the new Binance OpenClaw Web3 API integration, Alisa provides an interactive `/skills` dashboard. Instead of browsing multiple websites, users can instantly retrieve on-chain data directly inside the chat to validate their trading bias.
 
 ![Screenshot_20260312_221445_org_telegram_messenger_LaunchActivity](https://github.com/user-attachments/assets/d077ac2b-7295-438b-a960-9d1744dcd74a)
@@ -98,13 +127,14 @@ To ensure the OpenClaw Agent delivers professional-grade verdicts, we feed it hi
 ```
 ┌─────────────────────────────────────────────────────┐
 │                   TELEGRAM USER                      │
-│         scan BTC / margin 100 leverage 5x            │
+│    scan BTC / /learn ETH / /signals / /alert SOL     │
 └──────────────┬──────────────────────────────────────┘
                │
 ┌──────────────▼──────────────────────────────────────┐
-│          BINANCE FUTURES API (540+ pairs)            │
+│          BINANCE FUTURES API (1000+ pairs)           │
 │    fetch_klines() → Logarithmic Geometry Scanner     │
 │    199 candles × 4H/1D → find_trend_line()           │
+│    Smart API Weight Limiter (auto-pause > 2000)      │
 └──────────────┬──────────────────────────────────────┘
                │
 ┌──────────────▼──────────────────────────────────────┐
@@ -120,22 +150,24 @@ To ensure the OpenClaw Agent delivers professional-grade verdicts, we feed it hi
                │
 ┌──────────────▼──────────────────────────────────────┐
 │      OPENCLAW EXTRACT (client.extract.run)           │
-│                                                      │
-│   Prompt + Indicators + Skills Data                  │
-│        ↓                                             │
 │   TradeVerdict(BaseModel):                           │
-│     direction: "LONG"                                │
-│     entry_price: 98245.50    ← typed float           │
-│     stop_loss: 96100.00      ← typed float           │
-│     take_profit: 103500.00   ← typed float           │
-│     risk_percent: 4.37       ← typed float           │
-│     logic: "Funding negative, Smart Money buying..." │
+│     direction: "LONG" | entry: 98245.50 (float)     │
+│     stop_loss: 96100.00 | take_profit: 103500.00    │
 │        ↓ fallback: agent.run() → OpenRouter          │
 └──────────────┬──────────────────────────────────────┘
                │
 ┌──────────────▼──────────────────────────────────────┐
+│      🔴 REAL-TIME SSE STREAMING (stream=true)        │
+│   Token-by-token AI reasoning → Telegram Live Edit   │
+│   Updates every 1.5s | Cursor ▌ | LIVE indicator    │
+│        ↓ fallback: Progressive display               │
+└──────────────┬──────────────────────────────────────┘
+               │
+┌──────────────▼──────────────────────────────────────┐
 │        TELEGRAM + BINANCE SQUARE OUTPUT              │
-│  📊 Chart PNG + AI Verdict + [Post to Square] btn   │
+│  📊 Chart + AI Verdict + Extended Analysis           │
+│  📚 /learn (Education) | 🏆 /signals (Winrate)      │
+│  📢 [Post to Square] | 🔔 Price Alerts              │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -157,15 +189,18 @@ Alisa provides a comprehensive control panel via Telegram:
 
 **👥 Public Commands (all users):**
 *   `/start` - Initializes the dashboard.
-*   `scan [coin]` / `look [coin]` / `посмотри [coin]` - Forces an immediate OpenClaw analysis of a specific asset.
+*   `scan [coin]` / `look [coin]` / `посмотри [coin]` - **AI analysis with real-time streaming** — watch AI think live (🔴 LIVE), then receive chart + extended verdict.
 *   `margin 100 leverage 10 max 20%` - Reply to a signal for exact Stop-Loss math.
+*   📚 `/learn [coin]` - **Education Mode** — explains ALL indicators (RSI, MACD, Ichimoku, OBV, MFI, ADX, StochRSI, SuperTrend, Funding, Volume Decay) with current values and plain-language interpretation. Perfect for beginners.
+*   🏆 `/signals` - **Signal Accuracy Tracker** — shows winrate of all bot predictions since last scan. Compares breakout entry price vs current price for each coin.
 *   `/skills` - Opens the interactive Binance Web3 Skills keyboard.
 *   `/top gainers` - Top 10 Futures growth (24h).
 *   `/top losers` - Top 10 Futures drops (24h).
-*   `/trend` - Lists all coins that broke through trendlines since the last global scan (with breakout price & current price).
-*   `/alert [coin] [price]` - Set a price alert (e.g., `/alert BTC 69500`). Get notified when the target price is reached.
+*   `/trend` - Lists all coins that broke through trendlines since the last global scan.
+*   🔔 `/alert [coin] [price]` - Set a persistent price alert (survives restarts). Get notified when target is reached.
 *   `/alert list` - View your active alerts.
 *   `/alert clear` - Remove all your alerts.
+*   🌐 `/lang en` / `/lang ru` - Switch interface language (persistent per chat).
 
 **🔐 Admin Commands (bot owner only):**
 *   `/model` - Interactive AI engine selector (inline buttons: Free / GPT / Gemini models via OpenRouter).
