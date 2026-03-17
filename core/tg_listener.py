@@ -8,6 +8,34 @@ import json
 from datetime import datetime, timezone, timedelta
 from config import BOT_TOKEN, GROUP_CHAT_ID, CHAT_ID, load_breakout_log, load_price_alerts, save_price_alerts
 
+# --- LANGUAGE SETTINGS (per-chat, persistent) ---
+LANG_FILE = "data/lang_settings.json"
+
+def _load_langs():
+    try:
+        if os.path.exists(LANG_FILE):
+            with open(LANG_FILE, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+def _save_langs(langs):
+    try:
+        os.makedirs("data", exist_ok=True)
+        with open(LANG_FILE, "w") as f:
+            json.dump(langs, f)
+    except Exception:
+        pass
+
+def get_chat_lang(chat_id):
+    return _load_langs().get(str(chat_id), "en")
+
+def set_chat_lang(chat_id, lang):
+    langs = _load_langs()
+    langs[str(chat_id)] = lang
+    _save_langs(langs)
+
 from core.binance_api import fetch_klines, fetch_funding_rate
 from core.indicators import calculate_binance_indicators
 from agent.analyzer import ask_ai_analysis
@@ -395,8 +423,25 @@ async def telegram_polling_loop(app_session):
                         if not text:
                             continue
                             
-                        # AUTO LANGUAGE DETECTION
-                        lang_pref = "ru" if any('\u0400' <= char <= '\u04FF' for char in text) else "en"
+                        # LANGUAGE: saved preference OR auto-detect from text
+                        saved_lang = get_chat_lang(chat_id)
+                        has_cyrillic = any('\u0400' <= char <= '\u04FF' for char in text)
+                        lang_pref = "ru" if has_cyrillic else saved_lang
+
+                        # ==========================================
+                        # LANGUAGE SWITCH: /lang en | /lang ru
+                        # ==========================================
+                        if text.startswith("/lang"):
+                            parts = text.split()
+                            if len(parts) >= 2 and parts[1] in ("en", "ru"):
+                                set_chat_lang(chat_id, parts[1])
+                                if parts[1] == "en":
+                                    await send_response(app_session, chat_id, "🌐 Language set to *English* 🇬🇧", msg_id, parse_mode="Markdown")
+                                else:
+                                    await send_response(app_session, chat_id, "🌐 Язык установлен: *Русский* 🇷🇺", msg_id, parse_mode="Markdown")
+                            else:
+                                await send_response(app_session, chat_id, "🌐 Usage: `/lang en` or `/lang ru`", msg_id, parse_mode="Markdown")
+                            continue
 
                         # ==========================================
                         # BLOCK 1: AI MODEL COMMANDS (/models)
@@ -472,19 +517,40 @@ async def telegram_polling_loop(app_session):
                         # BLOCK 3: BASIC COMMANDS (/start, /time, /autopost)
                         # ==========================================
                         if text.startswith("/start") or text.startswith("/help") or text in ["привет", "hello"]:
-                            welcome_text = (
-                                "🤖 *Hello! I am AiAlisa Copilot.*\n\n"
-                                "*Commands:*\n"
-                                "🔍 `scan BTC` or `посмотри btc` - Run Tech Analysis\n"
-                                "💰 `margin 100 leverage 10 max 20%` - Reply for exact stop-loss math\n"
-                                "🛠 `/skills` - Open Web3 Skills Menu\n"
-                                "📈 `/top gainers` - Top 10 Futures growth 24h\n"
-                                "📉 `/top losers` - Top 10 Futures drops 24h\n"
-                                "📊 `/trend` - All breakout coins since last scan\n"
-                                "🔔 `/alert BTC 69500` - Set price alert\n"
-                                "🔔 `/alert list` - Show active alerts\n"
-                                "🔔 `/alert clear` - Remove all alerts"
-                            )
+                            if lang_pref == "ru":
+                                welcome_text = (
+                                    "🤖 *Привет! Я AiAlisa Copilot.*\n\n"
+                                    "*Команды:*\n"
+                                    "🔍 `посмотри BTC` — AI анализ с графиком\n"
+                                    "📚 `/learn BTC` — обучение: объяснение индикаторов\n"
+                                    "🏆 `/signals` — точность сигналов (winrate)\n"
+                                    "💰 `маржа 100 плечо 10 макс 20%` — расчёт стоп-лосса\n"
+                                    "🛠 `/skills` — меню Web3 Skills\n"
+                                    "📈 `/top gainers` — Топ 10 рост 24ч\n"
+                                    "📉 `/top losers` — Топ 10 падение 24ч\n"
+                                    "📊 `/trend` — все пробития с последнего скана\n"
+                                    "🔔 `/alert BTC 69500` — алерт на цену\n"
+                                    "🔔 `/alert list` — активные алерты\n"
+                                    "🔔 `/alert clear` — удалить все алерты\n"
+                                    "🌐 `/lang en` — switch to English"
+                                )
+                            else:
+                                welcome_text = (
+                                    "🤖 *Hello! I am AiAlisa Copilot.*\n\n"
+                                    "*Commands:*\n"
+                                    "🔍 `scan BTC` — AI analysis with chart\n"
+                                    "📚 `/learn BTC` — education: indicators explained\n"
+                                    "🏆 `/signals` — signal accuracy (winrate)\n"
+                                    "💰 `margin 100 leverage 10 max 20%` — stop-loss calculator\n"
+                                    "🛠 `/skills` — Web3 Skills menu\n"
+                                    "📈 `/top gainers` — Top 10 growth 24h\n"
+                                    "📉 `/top losers` — Top 10 drops 24h\n"
+                                    "📊 `/trend` — all breakouts since last scan\n"
+                                    "🔔 `/alert BTC 69500` — set price alert\n"
+                                    "🔔 `/alert list` — active alerts\n"
+                                    "🔔 `/alert clear` — remove all alerts\n"
+                                    "🌐 `/lang ru` — переключить на русский"
+                                )
                             if is_admin(msg):
                                 welcome_text += (
                                     "\n\n🔐 *Admin Commands:*\n"
@@ -660,6 +726,179 @@ async def telegram_polling_loop(app_session):
                                     "`/top gainers` — Top 10 growth (24h)\n"
                                     "`/top losers` — Top 10 drops (24h)",
                                     msg_id, parse_mode="Markdown")
+                            continue
+
+                        # ==========================================
+                        # LEARN MODE: /learn BTC — explain indicators
+                        # ==========================================
+                        if text.startswith("/learn"):
+                            parts = original_text.split()
+                            if len(parts) >= 2:
+                                coin_raw = parts[1].upper().strip()
+                                learn_symbol = coin_raw + "USDT" if not coin_raw.endswith("USDT") else coin_raw
+                                short_coin = learn_symbol.replace("USDT", "")
+
+                                await send_response(app_session, chat_id, f"📚 Analyzing {learn_symbol} indicators...", msg_id)
+
+                                raw_df = await fetch_klines(app_session, learn_symbol, "4h", 100)
+                                if raw_df:
+                                    df = pd.DataFrame(raw_df)
+                                    row, _ = calculate_binance_indicators(df, "4H")
+                                    funding = await fetch_funding_rate(app_session, learn_symbol)
+
+                                    price = row.get("close", 0)
+                                    rsi = row.get("rsi6", 0)
+                                    mfi = row.get("mfi", 0)
+                                    adx = row.get("adx", 0)
+                                    stoch = row.get("stoch_k", 0)
+                                    macd_h = row.get("macd_hist", 0)
+                                    obv = row.get("obv_status", "Unknown")
+                                    ichimoku = row.get("ichimoku_status", "Unknown")
+                                    supertrend = row.get("supertrend", "Unknown")
+                                    vol_decay = row.get("volume_decay", "Unknown")
+
+                                    if lang_pref == "ru":
+                                        rsi_note = "перекупленность ⚠️" if rsi > 70 else "перепроданность 🟢" if rsi < 30 else "нейтрально"
+                                        mfi_note = "перекупленность (давление продавцов)" if mfi > 80 else "перепроданность (давление покупателей)" if mfi < 20 else "нейтрально"
+                                        adx_note = "сильный тренд 💪" if adx > 25 else "слабый/боковой тренд"
+                                        stoch_note = "перекупленность" if stoch > 80 else "перепроданность" if stoch < 20 else "нейтрально"
+                                        macd_note = "бычий импульс 📈" if macd_h > 0 else "медвежий импульс 📉"
+
+                                        learn_text = (
+                                            f"📚 *Обучение: {short_coin}* (4H)\n"
+                                            f"💰 Цена: `${price:.6f}`\n\n"
+                                            f"📊 *Индикаторы:*\n"
+                                            f"• *RSI(6)* = `{rsi:.1f}` → {rsi_note}\n"
+                                            f"  _RSI показывает скорость изменения цены (0-100). >70 = перекупленность, <30 = перепроданность_\n\n"
+                                            f"• *MFI* = `{mfi:.1f}` → {mfi_note}\n"
+                                            f"  _Money Flow Index — RSI с учётом объёма. Показывает давление денег_\n\n"
+                                            f"• *ADX* = `{adx:.1f}` → {adx_note}\n"
+                                            f"  _Сила тренда (не направление). >25 = тренд, <20 = флэт_\n\n"
+                                            f"• *StochRSI* = `{stoch:.1f}` → {stoch_note}\n"
+                                            f"  _Более чувствительный RSI. Помогает ловить развороты_\n\n"
+                                            f"• *MACD* = `{macd_h:.4f}` → {macd_note}\n"
+                                            f"  _Разница быстрой и медленной EMA. Показывает импульс_\n\n"
+                                            f"• *OBV* → `{obv}`\n"
+                                            f"  _Объём покупок vs продаж. Бычий = накопление, медвежий = распределение_\n\n"
+                                            f"• *Ichimoku* → `{ichimoku}`\n"
+                                            f"  _Облако Ишимоку. Выше облака = бычий тренд, ниже = медвежий_\n\n"
+                                            f"• *SuperTrend* → `{supertrend}`\n"
+                                            f"  _Направление основного тренда на основе ATR_\n\n"
+                                            f"• *Volume Decay* → `{vol_decay}`\n"
+                                            f"  _Затухание/рост объёмов. Accumulation = рост интереса_\n\n"
+                                            f"• *Funding Rate* → `{funding}`\n"
+                                            f"  _Ставка финансирования фьючерсов. + = лонги платят шортам_"
+                                        )
+                                    else:
+                                        rsi_note = "overbought ⚠️" if rsi > 70 else "oversold 🟢" if rsi < 30 else "neutral"
+                                        mfi_note = "overbought (sell pressure)" if mfi > 80 else "oversold (buy pressure)" if mfi < 20 else "neutral"
+                                        adx_note = "strong trend 💪" if adx > 25 else "weak/sideways"
+                                        stoch_note = "overbought" if stoch > 80 else "oversold" if stoch < 20 else "neutral"
+                                        macd_note = "bullish momentum 📈" if macd_h > 0 else "bearish momentum 📉"
+
+                                        learn_text = (
+                                            f"📚 *Learn: {short_coin}* (4H)\n"
+                                            f"💰 Price: `${price:.6f}`\n\n"
+                                            f"📊 *Indicators Explained:*\n"
+                                            f"• *RSI(6)* = `{rsi:.1f}` → {rsi_note}\n"
+                                            f"  _RSI measures price momentum (0-100). >70 = overbought, <30 = oversold_\n\n"
+                                            f"• *MFI* = `{mfi:.1f}` → {mfi_note}\n"
+                                            f"  _Money Flow Index — RSI weighted by volume. Shows money pressure_\n\n"
+                                            f"• *ADX* = `{adx:.1f}` → {adx_note}\n"
+                                            f"  _Trend strength (not direction). >25 = trending, <20 = ranging_\n\n"
+                                            f"• *StochRSI* = `{stoch:.1f}` → {stoch_note}\n"
+                                            f"  _More sensitive RSI. Helps catch reversals early_\n\n"
+                                            f"• *MACD* = `{macd_h:.4f}` → {macd_note}\n"
+                                            f"  _Fast vs slow EMA difference. Shows momentum direction_\n\n"
+                                            f"• *OBV* → `{obv}`\n"
+                                            f"  _On-Balance Volume. Bullish = accumulation, Bearish = distribution_\n\n"
+                                            f"• *Ichimoku* → `{ichimoku}`\n"
+                                            f"  _Ichimoku Cloud. Above cloud = bullish, below = bearish_\n\n"
+                                            f"• *SuperTrend* → `{supertrend}`\n"
+                                            f"  _Main trend direction based on ATR volatility_\n\n"
+                                            f"• *Volume Decay* → `{vol_decay}`\n"
+                                            f"  _Volume momentum. Accumulation = growing interest_\n\n"
+                                            f"• *Funding Rate* → `{funding}`\n"
+                                            f"  _Futures funding. Positive = longs pay shorts_"
+                                        )
+
+                                    # Split if too long for one message
+                                    if len(learn_text) > 4000:
+                                        mid = learn_text.rfind("\n\n", 0, 4000)
+                                        await send_response(app_session, chat_id, learn_text[:mid], msg_id, parse_mode="Markdown")
+                                        await send_response(app_session, chat_id, learn_text[mid:], parse_mode="Markdown")
+                                    else:
+                                        await send_response(app_session, chat_id, learn_text, msg_id, parse_mode="Markdown")
+                                else:
+                                    await send_response(app_session, chat_id, f"⚠️ Pair `{learn_symbol}` not found on Binance Futures.", msg_id, parse_mode="Markdown")
+                            else:
+                                hint = "📚 Usage: `/learn BTC` — explains all indicators for any coin" if lang_pref == "en" else "📚 Использование: `/learn BTC` — объяснит все индикаторы"
+                                await send_response(app_session, chat_id, hint, msg_id, parse_mode="Markdown")
+                            continue
+
+                        # ==========================================
+                        # SIGNAL ACCURACY: /signals — winrate from breakout log
+                        # ==========================================
+                        if text.startswith("/signal"):
+                            log = load_breakout_log()
+                            if not log:
+                                no_signals = "📭 No signals recorded since last scan." if lang_pref == "en" else "📭 Нет записанных сигналов с последнего скана."
+                                await send_response(app_session, chat_id, no_signals, msg_id)
+                                continue
+
+                            wins = 0
+                            losses = 0
+                            lines = []
+                            for entry in log:
+                                sym = entry["symbol"]
+                                bp = entry.get("breakout_price", 0)
+                                cp = entry.get("current_price", 0)
+                                tf = entry.get("tf", "?")
+                                t = entry.get("time", "")[:16].replace("T", " ")
+
+                                # Check current price to see if signal was profitable
+                                try:
+                                    async with app_session.get(f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={sym}", timeout=5) as resp:
+                                        if resp.status == 200:
+                                            data = await resp.json()
+                                            now_price = float(data["price"])
+                                        else:
+                                            now_price = cp
+                                except Exception:
+                                    now_price = cp
+
+                                pnl_pct = ((now_price - bp) / bp) * 100 if bp > 0 else 0
+                                if pnl_pct > 0:
+                                    wins += 1
+                                    icon = "🟢"
+                                else:
+                                    losses += 1
+                                    icon = "🔴"
+
+                                short_sym = sym.replace("USDT", "")
+                                lines.append(f"{icon} `{short_sym}` {tf} | Entry: `{bp:.6f}` → Now: `{now_price:.6f}` ({pnl_pct:+.2f}%)")
+
+                            total = wins + losses
+                            winrate = (wins / total * 100) if total > 0 else 0
+
+                            if lang_pref == "ru":
+                                header = (
+                                    f"🏆 *Точность сигналов AiAlisa*\n\n"
+                                    f"📊 Всего: {total} | ✅ Profit: {wins} | ❌ Loss: {losses}\n"
+                                    f"🎯 Winrate: *{winrate:.0f}%*\n\n"
+                                )
+                            else:
+                                header = (
+                                    f"🏆 *AiAlisa Signal Accuracy*\n\n"
+                                    f"📊 Total: {total} | ✅ Profit: {wins} | ❌ Loss: {losses}\n"
+                                    f"🎯 Winrate: *{winrate:.0f}%*\n\n"
+                                )
+
+                            body = "\n".join(lines[:30])  # Limit to 30 signals
+                            full_text = header + body
+                            if len(full_text) > 4000:
+                                full_text = full_text[:4000] + "..."
+                            await send_response(app_session, chat_id, full_text, msg_id, parse_mode="Markdown")
                             continue
 
                         # ==========================================
