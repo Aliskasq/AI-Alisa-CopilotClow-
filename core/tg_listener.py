@@ -600,7 +600,7 @@ async def telegram_polling_loop(app_session):
                                     "📢 `/autopost on/off` — auto Square\n"
                                     "🪙 `/autopost SOL BTC` — coins\n"
                                     "✏️ `/post text` — post to Square\n"
-                                    "✏️ reply `/post` — publish replied msg\n"
+                                    "✏️ reply `/post text` — AI + your opinion\n"
                                     "💼 `/paper BTC 74000 long 5x sl 73000 tp 75000`\n"
                                     "💼 `/paper` — portfolio + live P&L\n"
                                     "💼 `/paper close 1` — close position\n"
@@ -644,7 +644,25 @@ async def telegram_polling_loop(app_session):
                             has_text_arg = len(parts) >= 2 and parts[1].strip()
                             reply_msg_obj = msg.get("reply_to_message")
 
-                            if has_text_arg:
+                            if reply_msg_obj and has_text_arg:
+                                # Reply to message + /post <my opinion> → AI text + user opinion
+                                replied_text = reply_msg_obj.get("text", "").strip()
+                                replied_caption = reply_msg_obj.get("caption", "").strip()
+                                ai_text = replied_text or replied_caption
+                                user_opinion = parts[1].strip()
+
+                                if not ai_text:
+                                    no_text = "⚠️ Replied message has no text." if lang_pref == "en" else "⚠️ В ответном сообщении нет текста."
+                                    await send_response(app_session, chat_id, no_text, msg_id)
+                                else:
+                                    post_content = f"🤖 AI-ALISA-COPILOTCLAW\n\n{ai_text}\n\n💬 {user_opinion}\n\n#AIBinance #BinanceSquare #Write2Earn"
+                                    if len(post_content) > 1950:
+                                        post_content = post_content[:1947] + "..."
+                                    pub_msg = "⏳ Publishing to Binance Square..." if lang_pref == "en" else "⏳ Публикую в Binance Square..."
+                                    await send_response(app_session, chat_id, pub_msg, msg_id)
+                                    result = await post_to_binance_square(post_content)
+                                    await send_response(app_session, chat_id, result, msg_id)
+                            elif has_text_arg:
                                 # /post <text> — post custom text
                                 user_text = parts[1].strip()
                                 pub_msg = "⏳ Publishing to Binance Square..." if lang_pref == "en" else "⏳ Публикую в Binance Square..."
@@ -652,7 +670,7 @@ async def telegram_polling_loop(app_session):
                                 result = await post_to_binance_square(user_text)
                                 await send_response(app_session, chat_id, result, msg_id)
                             elif reply_msg_obj:
-                                # /post as reply — grab replied message text and post it
+                                # Reply /post (no text) — just publish replied message
                                 replied_text = reply_msg_obj.get("text", "").strip()
                                 replied_caption = reply_msg_obj.get("caption", "").strip()
                                 post_content = replied_text or replied_caption
@@ -661,7 +679,6 @@ async def telegram_polling_loop(app_session):
                                     no_text = "⚠️ Replied message has no text." if lang_pref == "en" else "⚠️ В ответном сообщении нет текста."
                                     await send_response(app_session, chat_id, no_text, msg_id)
                                 else:
-                                    # Add header + hashtags if not already present
                                     if "#AIBinance" not in post_content:
                                         post_content = f"🤖 AI-ALISA-COPILOTCLAW\n\n{post_content}\n\n#AIBinance #BinanceSquare #Write2Earn"
                                     if len(post_content) > 1950:
@@ -1518,12 +1535,25 @@ async def telegram_polling_loop(app_session):
                                     # No trend line found — send text only
                                     await send_response(app_session, chat_id, ai_part1, msg_id, reply_markup=scan_markup)
 
-                                # Send extended analysis as second message
+                                # Send extended analysis as second message with Square button
                                 if ai_part2:
-                                    extended_text = f"🔬 *Extended AI Analysis — {symbol}*\n\n{ai_part2}"
+                                    # Prepare separate Square cache for extended part
+                                    post_id2 = str(uuid.uuid4())[:8]
+                                    short_sym2 = symbol.replace("USDT", "")
+                                    sq_text2 = f"🤖 AI-ALISA-COPILOTCLAW Analysis: ${short_sym2}\n\n{ai_part2}\n\n#AIBinance #BinanceSquare #{short_sym2} #Write2Earn"
+                                    if len(sq_text2) > 1950:
+                                        sq_text2 = sq_text2[:1947] + "..."
+                                    square_cache_put(post_id2, sq_text2)
+
+                                    ext_markup = {
+                                        "inline_keyboard": [
+                                            [{"text": "📢 Post to Binance Square", "callback_data": f"sq_{post_id2}"}]
+                                        ]
+                                    }
+                                    extended_text = f"🔬 *{symbol} — Extended Analysis*\n\n{ai_part2}"
                                     if len(extended_text) > 4000:
                                         extended_text = extended_text[:4000] + "..."
-                                    await send_response(app_session, chat_id, extended_text, parse_mode="Markdown")
+                                    await send_response(app_session, chat_id, extended_text, parse_mode="Markdown", reply_markup=ext_markup)
 
                                 # Delete streaming message 15s after chart/text sent
                                 if stream_msg_id:
