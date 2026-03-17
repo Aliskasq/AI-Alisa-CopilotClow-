@@ -154,21 +154,24 @@ async def build_trend_text(session: aiohttp.ClientSession, lang: str = "ru") -> 
     if not log:
         return "📭 No breakouts since last scan." if lang == "en" else "📭 Нет пробитий с последнего скана."
 
+    # Batch fetch ALL prices in one request (instead of 50+ individual calls)
+    price_map = {}
+    try:
+        async with session.get("https://fapi.binance.com/fapi/v1/ticker/price", timeout=10) as resp:
+            if resp.status == 200:
+                all_prices = await resp.json()
+                for p in all_prices:
+                    price_map[p["symbol"]] = float(p["price"])
+    except Exception:
+        pass
+
     header = "📊 *Trendline Breakouts:*\n" if lang == "en" else "📊 *Пробития трендовых линий:*\n"
     lines = [header]
     for entry in log:
         sym = entry["symbol"].replace("USDT", "")
         tf = entry["tf"]
         bp = entry["breakout_price"]
-        current_price = entry["current_price"]
-        try:
-            url = f"https://fapi.binance.com/fapi/v1/ticker/price?symbol={entry['symbol']}"
-            async with session.get(url, timeout=5) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    current_price = float(data["price"])
-        except Exception:
-            pass
+        current_price = price_map.get(entry["symbol"], entry["current_price"])
 
         diff_pct = ((current_price / bp) - 1) * 100 if bp > 0 else 0
         arrow = "🟢" if diff_pct >= 0 else "🔴"
