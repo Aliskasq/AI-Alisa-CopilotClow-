@@ -98,7 +98,13 @@ async def _stream_verdict(client, prompt, telegram_stream):
         # Phase 3: Get full AI response via OpenClaw SDK
         result = await client.agent.run(prompt)
 
-        # Extract response text (mirrors main fallback logic exactly)
+        # Validate SDK response before displaying
+        if hasattr(result, 'success') and result.success is False:
+            error_msg = getattr(result, 'error', 'unknown')
+            logging.info(f"⚙️ Stream agent.run returned success=False: {error_msg}")
+            return None
+
+        # Extract response text (mirrors main fallback logic)
         response = None
         if hasattr(result, 'content') and result.content:
             response = result.content
@@ -106,10 +112,9 @@ async def _stream_verdict(client, prompt, telegram_stream):
             response = result.text
         elif isinstance(result, str) and result:
             response = result
-        else:
-            response = str(result)
 
-        if not response or len(response.strip()) < 10:
+        # Safety: reject raw SDK objects or error repr
+        if not response or len(response.strip()) < 20 or 'request_id=' in str(response):
             return None
 
         response = response.strip()
