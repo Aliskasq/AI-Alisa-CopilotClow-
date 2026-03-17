@@ -9,7 +9,7 @@
 Designed to enhance the Binance ecosystem, Alisa solves four major challenges:
 1. **Trading Strategy:** Scans **540+ Binance Futures pairs** simultaneously using proprietary logarithmic geometry and Smart Money Concepts.
 2. **Risk Management:** Interactively calculates exact Stop-Loss limits based on user-defined margin and leverage.
-3. **Education:** `/learn` mode explains all 12+ indicators in plain language — making crypto accessible to beginners.
+3. **Education:** `/learn` mode explains all 16+ indicators in plain language — making crypto accessible to beginners.
 4. **Community Marketing:** Empowers Crypto-Influencers with automated AI publications to **Binance Square** with extended analysis.
 
 ### ⚡ NEW: Real-Time AI Streaming, Education & Signal Tracking
@@ -19,7 +19,7 @@ Designed to enhance the Binance ecosystem, Alisa solves four major challenges:
 | 🔴 **Live AI Streaming** | Real-time SSE token streaming — watch AI think live in Telegram |
 | 📚 **Education Mode** | `/learn BTC` — explains every indicator in plain language for beginners |
 | 🏆 **Signal Tracker** | `/signals` — live winrate accuracy of all bot predictions |
-| 🔬 **Extended Analysis** | `scan BTC` returns deep breakdown of all 12+ indicators + 7 Web3 skills |
+| 🔬 **Extended Analysis** | `scan BTC` returns deep breakdown of all 16+ indicators + 7 Web3 skills |
 | 🌐 **Bilingual** | `/lang en` / `/lang ru` — full English & Russian support, per-chat persistent |
 | 🔔 **Smart Alerts** | `/alert BTC 75000` — persistent price alerts that survive restarts |
 | 📢 **Smart Auto-Post** | Extended AI analysis auto-published to Binance Square with funding, indicators & skills |
@@ -125,11 +125,13 @@ To ensure the OpenClaw Agent delivers professional-grade verdicts, we feed it hi
 *   👨‍💻 **Top Traders PnL** — 30-day win rate of best on-chain traders
 *   Live Binance Futures **Funding Rates** — monitored for short squeeze prediction
 
-**12+ Technical Indicators:**
-*   **Trend & Oscillators:** EMA (7, 25, 99), MACD Histogram, Ichimoku Cloud, SuperTrend, ADX, RSI (6), StochRSI, MFI (Money Flow Index).
-*   **Volume Metrics:** OBV (On-Balance Volume) and custom Volume Decay algorithms.
-*   **SMC:** Order Blocks (Support/Resistance OB), Fair Value Gaps (Bullish/Bearish FVG).
+**16+ Technical Indicators:**
+*   **Trend & Momentum:** EMA (7, 25, 99), RSI (6, 12, 24), MACD (Line, Signal, Histogram), ADX, SuperTrend, Ichimoku Cloud, StochRSI.
+*   **Volume & Money Flow:** OBV, MFI (Money Flow Index), CMF (Chaikin Money Flow), Volume Decay, VWAP, Volume Block Analysis (buy/sell power shift).
+*   **Volatility:** Bollinger Bands (20, 2), ATR (14).
+*   **SMC (Smart Money Concepts):** Order Blocks (Support/Resistance OB), Fair Value Gaps (Bullish/Bearish FVG) — validated for unfilled gaps and unbroken levels.
 *   **Grid:** Dynamic Fibonacci retracements based on local extremums.
+*   **Funding Rate:** Real-time from Binance Futures API.
 
 All indicators + skills are explained in plain language via `/learn` education mode.
 </details>
@@ -206,7 +208,7 @@ Alisa provides a comprehensive control panel via Telegram:
 | Command | Aliases | Description |
 |---|---|---|
 | `scan BTC` | `look BTC`, `check BTC`, `analyze BTC`, `посмотри BTC`, `глянь BTC`, `чекни BTC`, `анализ BTC` | 🔍 **AI analysis with real-time streaming** — 🔴 LIVE AI thinking → chart with logarithmic trendline → extended verdict with all indicators + Web3 skills |
-| `/learn BTC` | _(any futures coin)_ | 📚 **Education Mode** — explains ALL 12+ indicators with current values in plain language (RSI, MFI, ADX, StochRSI, MACD, OBV, Ichimoku, SuperTrend, Volume Decay, Funding Rate) |
+| `/learn BTC` | _(any futures coin)_ | 📚 **Education Mode** — explains ALL 16+ indicators with current values in plain language (RSI 6/12/24, MACD Line/Signal/Histogram, ADX, MFI, StochRSI, Ichimoku, SuperTrend, OBV, Bollinger Bands, VWAP, CMF, Volume Blocks, Funding Rate, SMC Order Blocks, FVG) |
 | `/signals` | | 🏆 **Signal Accuracy Tracker** — live winrate of all bot predictions, compares entry vs current price |
 | `/skills` | | 🛠 **Web3 Skills Dashboard** — interactive buttons for Smart Money, Social Hype, Meme Rank, Inflow, PnL, Token Rank |
 | `margin 100 leverage 10 max 20%` | `маржа 100 плечо 10 макс 20%` | 💰 **Risk Calculator** — reply to any signal for exact Stop-Loss math |
