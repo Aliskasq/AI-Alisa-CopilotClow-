@@ -70,15 +70,12 @@ async def _edit_telegram_msg(session, chat_id, message_id, text, bot_token, pars
         pass
 
 
-async def _stream_verdict(client, prompt, telegram_stream):
-    """Stream AI verdict to Telegram with progressive display.
+async def _progressive_display(text, telegram_stream):
+    """Progressively reveal AI text in Telegram via editMessageText.
     
-    Uses OpenClaw agent.run() for inference, then progressively
-    reveals the response in Telegram via editMessageText — creating
-    a real-time "thinking" effect for the user.
-    
-    Falls back gracefully if anything fails.
-    Returns the final text, or None on failure.
+    Takes already-obtained AI response and reveals it word-by-word
+    with a typing cursor effect. Works regardless of text source
+    (OpenClaw SDK, OpenRouter, or any other provider).
     """
     session = telegram_stream["session"]
     chat_id = telegram_stream["chat_id"]
@@ -86,57 +83,28 @@ async def _stream_verdict(client, prompt, telegram_stream):
     bot_token = telegram_stream["bot_token"]
 
     try:
-        # Phase 1: Show skill execution status
-        await _edit_telegram_msg(session, chat_id, message_id,
-            "⚡ OpenClaw AI Agent connected...\n🔍 Executing Binance Web3 Skills...", bot_token)
-        await asyncio.sleep(0.5)
+        words = text.split()
+        if len(words) < 5:
+            # Too short for progressive display
+            await _edit_telegram_msg(session, chat_id, message_id,
+                f"⚡ *OpenClaw AI Complete* ✅\n\n{text}",
+                bot_token, parse_mode="Markdown")
+            return
 
-        # Phase 2: Show AI reasoning
-        await _edit_telegram_msg(session, chat_id, message_id,
-            "⚡ OpenClaw AI Agent connected...\n🧠 AI reasoning in progress...", bot_token)
-
-        # Phase 3: Get full AI response via OpenClaw SDK
-        result = await client.agent.run(prompt)
-
-        # Validate SDK response before displaying
-        if hasattr(result, 'success') and result.success is False:
-            error_msg = getattr(result, 'error', 'unknown')
-            logging.info(f"⚙️ Stream agent.run returned success=False: {error_msg}")
-            return None
-
-        # Extract response text (mirrors main fallback logic)
-        response = None
-        if hasattr(result, 'content') and result.content:
-            response = result.content
-        elif hasattr(result, 'text') and result.text:
-            response = result.text
-        elif isinstance(result, str) and result:
-            response = result
-
-        # Safety: reject raw SDK objects or error repr
-        if not response or len(response.strip()) < 20 or 'request_id=' in str(response):
-            return None
-
-        response = response.strip()
-
-        # Phase 4: Progressive reveal — show text appearing chunk by chunk
-        chunks = []
-        words = response.split()
-        chunk_size = max(3, len(words) // 8)  # ~8 updates total
-        for i in range(0, len(words), chunk_size):
-            chunks.append(" ".join(words[:i + chunk_size]))
-
-        for i, partial in enumerate(chunks[:-1]):  # Skip last — will be final
+        # Build progressive chunks (~8 updates)
+        chunk_size = max(3, len(words) // 8)
+        for i in range(chunk_size, len(words), chunk_size):
+            partial = " ".join(words[:i])
             display = partial + " ▌"
             if len(display) > 4000:
                 display = display[:4000]
             await _edit_telegram_msg(session, chat_id, message_id,
-                f"⚡ *OpenClaw Live* ({len(partial.split())}/{len(words)} words)\n\n{display}",
+                f"⚡ *OpenClaw Live* ({i}/{len(words)})\n\n{display}",
                 bot_token)
-            await asyncio.sleep(0.8)
+            await asyncio.sleep(0.7)
 
-        # Phase 5: Final complete message
-        final_display = response
+        # Final — complete text, no cursor
+        final_display = text
         if len(final_display) > 3900:
             final_display = final_display[:3900] + "..."
         await _edit_telegram_msg(session, chat_id, message_id,
@@ -144,12 +112,9 @@ async def _stream_verdict(client, prompt, telegram_stream):
             bot_token, parse_mode="Markdown")
 
         logging.info(f"✅ OpenClaw Progressive Stream: {len(words)} words → Telegram")
-        return response
 
     except Exception as e:
-        logging.info(f"⚙️ Progressive stream error ({e}), falling back...")
-
-    return None
+        logging.info(f"⚙️ Progressive display error ({e}), skipping...")
 
 
 # Load the FULL arsenal of Native Binance Skills
@@ -276,42 +241,32 @@ Fibo: {fibo_text}
 """
 
     # ---------------------------------------------------------
-    # ROUTING: PRIMARY INFERENCE VIA OPENCLAW SDK
+    # PHASE 1: SHOW LIVE STATUS IN TELEGRAM (if streaming)
     # ---------------------------------------------------------
+    if telegram_stream:
+        tg_session = telegram_stream["session"]
+        tg_chat = telegram_stream["chat_id"]
+        tg_msg = telegram_stream["message_id"]
+        tg_token = telegram_stream["bot_token"]
+        await _edit_telegram_msg(tg_session, tg_chat, tg_msg,
+            "⚡ OpenClaw AI Agent connected...\n🔍 Executing Binance Web3 Skills...", tg_token)
+        await asyncio.sleep(0.5)
+        await _edit_telegram_msg(tg_session, tg_chat, tg_msg,
+            "⚡ OpenClaw AI Agent connected...\n🧠 AI reasoning in progress...", tg_token)
+
+    # ---------------------------------------------------------
+    # PHASE 2: GET AI RESPONSE (try all sources)
+    # ---------------------------------------------------------
+    ai_response = None
+    full_prompt = f"{system_instruction}\n\n{user_prompt}"
+
+    # --- STEP 1: OpenClaw SDK (Extract → Agent) ---
     if openclaw_installed and openclaw:
         try:
             logging.info("🧠 Attempting inference via openclaw.AsyncOpenClaw()...")
-            
-            # Connect to CMDOP Cloud securely using .env key
             client = openclaw.AsyncOpenClaw.remote(api_key=os.getenv("CMDOP_API_KEY"))
 
-            # Merge system and user prompts into a single string for the new SDK
-            full_prompt = f"{system_instruction}\n\n{user_prompt}"
-
-            # =====================================================
-            # STEP 1: OpenClaw Agent Streaming (Live Telegram UI)
-            # =====================================================
-            # If telegram_stream is provided, stream AI tokens in real-time
-            # to a Telegram message via editMessageText. Users see the AI
-            # "thinking" live — massive UX improvement over static "⏳".
-            if telegram_stream:
-                try:
-                    logging.info("⚡ [OpenClaw Stream] Starting live AI stream to Telegram...")
-                    stream_result = await _stream_verdict(client, full_prompt, telegram_stream)
-                    if stream_result:
-                        logging.info("✅ OpenClaw Streaming completed successfully.")
-                        return stream_result
-                    else:
-                        logging.info("⚙️ Streaming returned empty, falling back to Extract...")
-                except Exception as stream_err:
-                    logging.info(f"⚙️ Streaming error ({stream_err}), falling back to Extract...")
-
-            # =====================================================
-            # STEP 2: OpenClaw Extract — Structured TradeVerdict
-            # =====================================================
-            # Uses CMDOP ExtractService to return a validated Pydantic
-            # model instead of raw text. This ensures typed entry/SL/TP
-            # values and enables programmatic signal processing.
+            # Try Extract (structured Pydantic output)
             try:
                 logging.info("📊 [OpenClaw Extract] Requesting structured TradeVerdict...")
                 extract_result = await client.extract.run(
@@ -324,63 +279,71 @@ Fibo: {fibo_text}
                     )
                 )
                 if extract_result.data:
-                    response = _format_verdict(extract_result.data, base_coin, price, dynamics_text)
-                    logging.info(f"✅ OpenClaw Extract: Structured verdict received → {extract_result.data.direction} "
-                                 f"(Entry: {extract_result.data.entry_price}, SL: {extract_result.data.stop_loss}, "
-                                 f"TP: {extract_result.data.take_profit})")
-                    return response
+                    ai_response = _format_verdict(extract_result.data, base_coin, price, dynamics_text)
+                    logging.info(f"✅ OpenClaw Extract: {extract_result.data.direction}")
                 else:
-                    logging.info("⚙️ Extract returned no structured data, falling back to agent.run...")
+                    logging.info("⚙️ Extract returned no data, trying agent.run...")
             except Exception as extract_err:
-                logging.info(f"⚙️ Extract unavailable ({extract_err}), falling back to agent.run...")
+                logging.info(f"⚙️ Extract unavailable ({extract_err}), trying agent.run...")
 
-            # =====================================================
-            # STEP 3: Fallback — OpenClaw Agent (existing behavior)
-            # =====================================================
-            result = await client.agent.run(full_prompt)
-            
-            # Extract content handling potential wrapper classes returned by the library
-            if hasattr(result, 'content'):
-                response = result.content
-            elif hasattr(result, 'text'):
-                response = result.text
-            elif isinstance(result, str):
-                response = result
-            else:
-                response = str(result)
-                
-            if response:
-                logging.info("✅ OpenClaw agent.run inference successful.")
-                return response
+            # Try Agent (free-text)
+            if not ai_response:
+                try:
+                    result = await client.agent.run(full_prompt)
+                    # Validate success before extracting
+                    if hasattr(result, 'success') and result.success is False:
+                        logging.info(f"⚙️ agent.run returned success=False, falling back to OpenRouter...")
+                    elif hasattr(result, 'text') and result.text:
+                        ai_response = result.text
+                        logging.info("✅ OpenClaw agent.run inference successful.")
+                    elif hasattr(result, 'content') and result.content:
+                        ai_response = result.content
+                        logging.info("✅ OpenClaw agent.run inference successful.")
+                    elif isinstance(result, str) and len(result) > 20 and 'request_id=' not in result:
+                        ai_response = result
+                        logging.info("✅ OpenClaw agent.run inference successful.")
+                    else:
+                        logging.info("⚙️ agent.run returned empty/invalid, falling back to OpenRouter...")
+                except Exception as agent_err:
+                    logging.info(f"⚙️ agent.run error ({agent_err}), falling back to OpenRouter...")
+
         except Exception as e:
-            logging.warning(f"⚠️ OpenClaw SDK timeout/error ({e}). Activating failsafe routing...")
+            logging.warning(f"⚠️ OpenClaw SDK error ({e}). Activating failsafe routing...")
     else:
-        logging.warning("⚠️ OpenClaw core detected missing OS dependencies. Activating built-in failsafe AI routing...")
+        logging.warning("⚠️ OpenClaw not installed. Using failsafe AI routing...")
+
+    # --- STEP 2: Failsafe — Direct OpenRouter HTTP ---
+    if not ai_response:
+        logging.info("🔄 Routing through OpenRouter failsafe...")
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": OPENROUTER_MODEL,
+            "messages": [
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": 0.2
+        }
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post("https://openrouter.ai/api/v1/chat/completions",
+                                        headers=headers, json=payload, timeout=120) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        ai_response = data["choices"][0]["message"]["content"].strip()
+                        logging.info("✅ OpenRouter failsafe inference successful.")
+                    else:
+                        ai_response = f"❌ API Error: {response.status}"
+        except Exception as e:
+            ai_response = f"❌ Network Error: {e}"
 
     # ---------------------------------------------------------
-    # ROUTING: FAILSAFE AIOHTTP EXECUTION VIA OPENROUTER
+    # PHASE 3: PROGRESSIVE DISPLAY IN TELEGRAM (if streaming)
     # ---------------------------------------------------------
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    if telegram_stream and ai_response and not ai_response.startswith("❌"):
+        await _progressive_display(ai_response, telegram_stream)
 
-    payload = {
-        "model": OPENROUTER_MODEL,
-        "messages": [
-            {"role": "system", "content": system_instruction},
-            {"role": "user", "content": user_prompt}
-        ],
-        "temperature": 0.2
-    }
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=120) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data["choices"][0]["message"]["content"].strip()
-                else:
-                    return f"❌ API Error: {response.status}"
-    except Exception as e:
-        return f"❌ Network Error: {e}"
+    return ai_response
