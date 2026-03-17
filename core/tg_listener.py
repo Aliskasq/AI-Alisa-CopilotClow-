@@ -364,9 +364,10 @@ async def telegram_polling_loop(app_session):
                                                 user_is_admin = False
                                 
                                 if not user_is_admin:
+                                    deny_msg = "⛔️ Only admins can post to Square!" if cb_lang == "en" else "⛔️ Только админы могут постить в Square!"
                                     await app_session.post(
                                         f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-                                        json={"callback_query_id": cq_id, "text": "⛔️ Only Group Admins can post to Square!", "show_alert": True}
+                                        json={"callback_query_id": cq_id, "text": deny_msg, "show_alert": True}
                                     )
                                     continue
                                 
