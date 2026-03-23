@@ -316,18 +316,18 @@ To keep the bot running 24/7, create a system service:
 ```bash
 sudo tee /etc/systemd/system/alisa.service > /dev/null << 'EOF'
 [Unit]
-Description=AI Alisa Copilot Bot (OpenClaw SDK)
+Description=AI Alisa CopilotClow Bot (OpenClaw SDK)
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/root/AIAlisa
-ExecStart=/root/AIAlisa/venv/bin/python main.py
+WorkingDirectory=/root/AI-Alisa-CopilotClow-
+ExecStart=/root/AI-Alisa-CopilotClow-/venv/bin/python main.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=alisa-bot
+SyslogIdentifier=alisa-copilotclow
 Environment=PYTHONUNBUFFERED=1
 
 [Install]
